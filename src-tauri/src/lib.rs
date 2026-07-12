@@ -1,6 +1,8 @@
 mod sensors;
 mod sim;
 
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
 
 /// App-wide state available to commands.
@@ -27,7 +29,7 @@ pub fn run() {
                 species: species.clone(),
             });
 
-            // The sensor→sim loop now feeds the UI through events.
+            // The sensor→sim loop feeds the UI through events.
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 let mut engine = sim::Engine::new();
@@ -63,8 +65,8 @@ pub fn run() {
                         continue;
                     };
 
-                    // Hit zone: the central-lower region where the blob lives,
-                    // as fractions of the window (device-pixel safe).
+                    // Hit zone: the region where the blob lives, as
+                    // fractions of the window (device-pixel safe).
                     let w = size.width as f64;
                     let h = size.height as f64;
                     let x = cursor.x - pos.x as f64;
@@ -78,7 +80,31 @@ pub fn run() {
                     }
                 }
             });
-            
+
+            // System tray: the pet's official residence. Hide/show + quit.
+            let toggle =
+                MenuItem::with_id(app, "toggle", "Hide / show pet", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "Quit Byteling", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&toggle, &quit])?;
+            TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .tooltip("Byteling")
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "toggle" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            if w.is_visible().unwrap_or(true) {
+                                let _ = w.hide();
+                            } else {
+                                let _ = w.show();
+                            }
+                        }
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .build(app)?;
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![get_species])
