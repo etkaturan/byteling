@@ -9,13 +9,15 @@ fn greet(name: &str) -> String {
 fn spawn_sensor_loop() {
     std::thread::spawn(|| {
         let mut sensors = sensors::SensorService::new();
+        let mut engine = sim::Engine::new();
         loop {
-            // Sleep first: gives the CPU baseline time to become meaningful.
             std::thread::sleep(std::time::Duration::from_secs(5));
             let snapshot = sensors.sample();
-            let needs = sim::compute_needs(&snapshot);
-            println!("{snapshot:#?}");
-            println!("→ {needs:#?}");
+            let state: sim::PetState = engine.tick(&snapshot);
+            println!(
+                "mood: {:?} ({:.0})  needs: {:?}",
+                state.mood, state.mood_score, state.needs
+            );
         }
     });
 }
