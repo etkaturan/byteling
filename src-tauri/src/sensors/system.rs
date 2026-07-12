@@ -49,4 +49,18 @@ impl SystemPoller {
             gpu: None, // filled in by SensorService
         }
     }
+
+    /// Stable hardware identity facts — safe to call once at startup.
+    pub fn hardware_identity(&mut self) -> (String, u64) {
+        self.sys.refresh_cpu_all();
+        let cpu_brand = self
+            .sys
+            .cpus()
+            .first()
+            .map(|c| c.brand().trim().to_string())
+            .unwrap_or_else(|| "Unknown CPU".to_string());
+        self.sys.refresh_memory();
+        let ram_gb = self.sys.total_memory() / 1_000_000_000;
+        (cpu_brand, ram_gb)
+    }
 }

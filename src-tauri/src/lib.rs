@@ -9,6 +9,9 @@ fn greet(name: &str) -> String {
 fn spawn_sensor_loop() {
     std::thread::spawn(|| {
         let mut sensors = sensors::SensorService::new();
+        let (cpu, ram_gb, gpu_name) = sensors.hardware_identity();
+        let species = sim::hatch(&cpu, ram_gb, gpu_name.as_deref());
+        println!("🥚 hatched: {species:#?}  (from {cpu}, {ram_gb}GB, {gpu_name:?})");
         let mut engine = sim::Engine::new();
         loop {
             std::thread::sleep(std::time::Duration::from_secs(5));

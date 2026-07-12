@@ -52,4 +52,11 @@ impl SensorService {
         snapshot.gpu = self.gpu.sample();
         snapshot
     }
+
+    /// Stable identity facts for species genesis: CPU brand, RAM GB, GPU name.
+    pub fn hardware_identity(&mut self) -> (String, u64, Option<String>) {
+        let (cpu, ram_gb) = self.system.hardware_identity();
+        let gpu_name = self.gpu.sample().map(|g| g.name);
+        (cpu, ram_gb, gpu_name)
+    }
 }
