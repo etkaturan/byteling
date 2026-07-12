@@ -1,4 +1,5 @@
 mod sensors;
+mod sim;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -12,7 +13,9 @@ fn spawn_sensor_loop() {
             // Sleep first: gives the CPU baseline time to become meaningful.
             std::thread::sleep(std::time::Duration::from_secs(5));
             let snapshot = sensors.sample();
+            let needs = sim::compute_needs(&snapshot);
             println!("{snapshot:#?}");
+            println!("→ {needs:#?}");
         }
     });
 }
