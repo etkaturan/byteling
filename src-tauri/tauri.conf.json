@@ -12,9 +12,15 @@
   "app": {
     "windows": [
       {
-        "title": "byteling",
-        "width": 800,
-        "height": 600
+        "title": "Byteling",
+        "width": 260,
+        "height": 300,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": false
       }
     ],
     "security": {
