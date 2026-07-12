@@ -46,6 +46,7 @@ impl SystemPoller {
             process_count: self.sys.processes().len(),
             uptime_hours: System::uptime() as f32 / 3600.0,
             system_drive_free_pct,
+            gpu: None, // filled in by SensorService
         }
     }
 }

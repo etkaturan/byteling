@@ -7,11 +7,11 @@ fn greet(name: &str) -> String {
 
 fn spawn_sensor_loop() {
     std::thread::spawn(|| {
-        let mut poller = sensors::SystemPoller::new();
+        let mut sensors = sensors::SensorService::new();
         loop {
             // Sleep first: gives the CPU baseline time to become meaningful.
             std::thread::sleep(std::time::Duration::from_secs(5));
-            let snapshot = poller.sample();
+            let snapshot = sensors.sample();
             println!("{snapshot:#?}");
         }
     });
