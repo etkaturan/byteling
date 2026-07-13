@@ -60,4 +60,9 @@ export const LINES = {
     down: ["It's so late… we should both rest.", "Late night and I feel awful. Bed?"],
     neutral: ["It's getting late. Don't stay up too long!", "Late night session, huh?"],
   },
+  petted: {
+    up: ["Hehe, that tickles!", "Aw, hi! 💛", "*happy wiggle*"],
+    down: ["Oh… thanks. I needed that.", "*weak purr*", "That's nice…"],
+    neutral: ["*purrs*", "Hehe!", "*leans into it*"],
+  },
 } satisfies Record<string, LineSet>;
