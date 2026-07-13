@@ -53,14 +53,17 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let mut sensors = sensors::SensorService::new();
-            let (cpu, ram_gb, gpu_name) = sensors.hardware_identity();
-            let species = sim::hatch(&cpu, ram_gb, gpu_name.as_deref());
+            let id = sensors.hardware_identity();
+            let species = sim::hatch(&id);
             println!("🥚 hatched: {species:?}");
+            println!(
+                "   from: laptop={}, age={:?}yr, cores={}, gpu={:?}",
+                id.is_laptop, id.age_years, id.cores, id.gpu
+            );
             let specs = MachineSpecs {
-                cpu: cpu.clone(),
-                // Convert decimal GB back to binary GiB for human-friendly display.
-                ram_gib: ((ram_gb as f64 * 1_000_000_000.0) / 1_073_741_824.0).round() as u64,
-                gpu: gpu_name.clone(),
+                cpu: id.cpu.clone(),
+                ram_gib: ((id.ram_gb as f64 * 1_000_000_000.0) / 1_073_741_824.0).round() as u64,
+                gpu: id.gpu.clone(),
             };
             app.manage(AppState {
                 species: species.clone(),

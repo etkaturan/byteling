@@ -1,19 +1,13 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import Creature, { Species, Mood } from "./Creature";
 import "./Clinic.css";
 
 type MachineSpecs = {
   cpu: string;
   ram_gib: number;
   gpu: string | null;
-};
-
-type Species = {
-  archetype: string;
-  temperament: string;
-  hue: number;
-  markings: number;
 };
 
 type Needs = {
@@ -23,8 +17,6 @@ type Needs = {
   rest: number;
   energy: number;
 };
-
-type Mood = "Thriving" | "Content" | "Uneasy" | "Unwell" | "Critical";
 
 type PetState = {
   needs: Needs;
@@ -88,7 +80,6 @@ function Clinic() {
     const unlisten = listen<PetState>("pet-state-changed", (e) =>
       setPet(e.payload),
     );
-      console.log("pet object:", JSON.stringify(pet));
     return () => {
       unlisten.then((f) => f());
     };
@@ -97,8 +88,6 @@ function Clinic() {
   if (!species) return <div className="clinic">Loading…</div>;
 
   const mood: Mood = pet?.mood ?? "Content";
-  const body = `hsl(${species.hue}, 65%, 55%)`;
-  const bodyDark = `hsl(${species.hue}, 65%, 40%)`;
 
   return (
     <div className="clinic">
@@ -110,23 +99,13 @@ function Clinic() {
       </header>
 
       <section className="patient">
-        <div
-          className="patient-blob"
-          style={{
-            background: `radial-gradient(circle at 35% 30%, ${body}, ${bodyDark})`,
-          }}
-        >
-          <div className="p-eyes" data-mood={mood}>
-            <span className="p-eye" />
-            <span className="p-eye" />
-          </div>
-        </div>
+        <Creature species={species} mood={mood} size={96} />
         <div className="patient-id">
           <div className="species-name">
-            {species.temperament} {species.archetype}
+            {species.life_stage} {species.family}
           </div>
           <div className="species-sub">
-            {species.markings} markings · hue {species.hue}
+            {species.build} build · {species.limbs} limbs · hue {species.hue}
           </div>
         </div>
       </section>
