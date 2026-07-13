@@ -33,22 +33,52 @@ function App() {
   const [grooming, setGrooming] = useState(false);
   const [groomMsg, setGroomMsg] = useState<string | null>(null);
   const [groomPreview, setGroomPreview] = useState<GroomReport | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showStats, setShowStats] = useState(false);
 
   const mood: Mood = pet?.mood ?? "Content";
-  const creatureName = species ? `${species.life_stage} ${species.family}` : "Byteling";
+  const creatureName = species
+    ? `${species.life_stage} ${species.family}`
+    : "Byteling";
   const hint =
-    pet?.needs.space !== null && pet?.needs.space !== undefined && pet.needs.space < 20
+    pet?.needs.space != null && pet.needs.space < 20
       ? "disk nearly full"
       : pet?.mood === "Critical" || pet?.mood === "Unwell"
         ? "not feeling well"
         : "all is well";
-  const { line, say, dismiss } = useChatter(mood, { creature: creatureName, hint });
+  const { line, say, dismiss } = useChatter(mood, {
+    creature: creatureName,
+    hint,
+  });
+
+  const lastClick = { current: 0 } as { current: number };
 
   const startDrag = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("button")) return;
-    if (e.button === 0) {
-      getCurrentWindow().startDragging().catch(console.error);
+    if ((e.target as HTMLElement).closest(".pet-menu")) return;
+    if (e.button !== 0) return;
+
+    const now = Date.now();
+    if (now - lastClick.current < 300) {
+      // Double-click detected → pet it, don't drag.
+      say("petted", true);
+      lastClick.current = 0;
+      return;
     }
+    lastClick.current = now;
+    getCurrentWindow().startDragging().catch(console.error);
+  };
+
+  // Right-click the creature → toggle the action menu.
+  const onContext = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setMenuOpen((v) => !v);
+  };
+
+  // Double-click → pet it: a quick happy reaction.
+  const onDoubleClick = () => {
+    console.log("double-clicked!");
+    say("petted", true);
   };
 
   const requestGroom = async () => {
@@ -98,23 +128,52 @@ function App() {
     <main className="stage" onMouseDown={startDrag}>
       {line && <SpeechBubble text={line} onDismiss={dismiss} />}
 
-      <div className="creature-holder" data-tauri-drag-region>
+      <div
+        className="creature-holder"
+        data-tauri-drag-region
+        onContextMenu={onContext}
+        onDoubleClick={onDoubleClick}
+      >
         <Creature species={species} mood={mood} size={150} />
       </div>
 
-      <div className="debug">
-        {mood} {pet ? `(${Math.round(pet.mood_score)})` : "…waking up"}
-        {pet && (
+      {/* Stats appear only when toggled on. */}
+      {showStats && pet && (
+        <div className="debug">
+          {mood} ({Math.round(pet.mood_score)})
           <div className="needs">
             C{Math.round(pet.needs.comfort)} · S
             {pet.needs.space === null ? "–" : Math.round(pet.needs.space)} · T
             {pet.needs.tidiness === null ? "–" : Math.round(pet.needs.tidiness)} · R
             {Math.round(pet.needs.rest)} · E{Math.round(pet.needs.energy)}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {groomPreview ? (
+      {/* Right-click menu. */}
+      {menuOpen && !groomPreview && (
+        <div className="pet-menu">
+          <button
+            className="menu-item"
+            onClick={() => {
+              setMenuOpen(false);
+              requestGroom();
+            }}
+            disabled={grooming}
+          >
+            {grooming ? "Grooming…" : groomMsg ?? "🧹 Groom"}
+          </button>
+          <button
+            className="menu-item"
+            onClick={() => setShowStats((v) => !v)}
+          >
+            {showStats ? "Hide stats" : "Show stats"}
+          </button>
+        </div>
+      )}
+
+      {/* Groom confirmation. */}
+      {groomPreview && (
         <div className="confirm">
           <div className="confirm-text">
             Clear ~{groomPreview.freed_mb} MB ({groomPreview.files_removed} files)
@@ -124,15 +183,14 @@ function App() {
             <button className="care-btn yes" onClick={confirmGroom}>
               Yes
             </button>
-            <button className="care-btn no" onClick={() => setGroomPreview(null)}>
+            <button
+              className="care-btn no"
+              onClick={() => setGroomPreview(null)}
+            >
               No
             </button>
           </div>
         </div>
-      ) : (
-        <button className="care-btn" onClick={requestGroom} disabled={grooming}>
-          {grooming ? "Grooming…" : groomMsg ?? "🧹 Groom"}
-        </button>
       )}
     </main>
   );

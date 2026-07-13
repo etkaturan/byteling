@@ -85,3 +85,33 @@ body,
 .care-btn.no {
   background: rgba(255, 255, 255, 0.85);
 }
+
+.pet-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(20, 22, 30, 0.95);
+  padding: 6px;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.menu-item {
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+  border: none;
+  border-radius: 7px;
+  padding: 6px 14px;
+  background: transparent;
+  color: #e6e8ee;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+.menu-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.menu-item:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
