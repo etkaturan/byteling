@@ -1,11 +1,15 @@
 mod sensors;
 mod sim;
 mod care;
+mod personality;
 
 use std::sync::Mutex;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
+use personality::{GroqProvider, SpeechContext, VoiceProvider};
+use std::fs;
+use std::path::PathBuf;
 
 /// App-wide state available to commands.
 struct AppState {
@@ -45,6 +49,58 @@ fn get_specs(state: tauri::State<AppState>) -> MachineSpecs {
 #[tauri::command]
 fn get_pet_state(state: tauri::State<AppState>) -> Option<sim::PetState> {
     state.latest.lock().unwrap().clone()
+}
+
+/// Save (or clear) the user's Groq API key.
+#[tauri::command]
+fn set_groq_key(app: tauri::AppHandle, key: String) -> Result<(), String> {
+    let path = key_path(&app).ok_or("no config dir")?;
+    fs::write(path, key.trim()).map_err(|e| e.to_string())
+}
+
+/// Whether a key is currently stored (so settings can show "connected").
+#[tauri::command]
+fn has_groq_key(app: tauri::AppHandle) -> bool {
+    load_key(&app).is_some()
+}
+
+/// Voice a line for the given context. Returns None if no key or the call
+/// fails — the frontend then keeps its canned line.
+#[tauri::command]
+async fn speak(app: tauri::AppHandle, ctx: SpeechContext) -> Option<String> {
+    let key = match load_key(&app) {
+        Some(k) => {
+            println!("speak: key loaded ({} chars), event={}", k.len(), ctx.event);
+            k
+        }
+        None => {
+            println!("speak: NO KEY loaded");
+            return None;
+        }
+    };
+    let provider = GroqProvider::new(key);
+    let result = provider.speak(&ctx).await;
+    println!("speak: groq returned {:?}", result);
+    result
+}
+
+
+
+/// Path to the file where the Groq key is stored (in the OS config dir).
+fn key_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let dir = app.path().app_config_dir().ok()?;
+    let _ = fs::create_dir_all(&dir);
+    Some(dir.join("groq_key.txt"))
+}
+
+fn load_key(app: &tauri::AppHandle) -> Option<String> {
+    let path = key_path(app)?;
+    let key = fs::read_to_string(path).ok()?.trim().to_string();
+    if key.is_empty() {
+        None
+    } else {
+        Some(key)
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -167,7 +223,10 @@ pub fn run() {
             get_specs,
             get_pet_state,
             preview_groom,
-            do_groom
+            do_groom,
+            set_groq_key,
+            has_groq_key,
+            speak
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

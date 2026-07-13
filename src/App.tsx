@@ -35,7 +35,14 @@ function App() {
   const [groomPreview, setGroomPreview] = useState<GroomReport | null>(null);
 
   const mood: Mood = pet?.mood ?? "Content";
-  const { line, say, dismiss } = useChatter(mood);
+  const creatureName = species ? `${species.life_stage} ${species.family}` : "Byteling";
+  const hint =
+    pet?.needs.space !== null && pet?.needs.space !== undefined && pet.needs.space < 20
+      ? "disk nearly full"
+      : pet?.mood === "Critical" || pet?.mood === "Unwell"
+        ? "not feeling well"
+        : "all is well";
+  const { line, say, dismiss } = useChatter(mood, { creature: creatureName, hint });
 
   const startDrag = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("button")) return;

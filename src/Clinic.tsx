@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import Creature, { Species, Mood } from "./Creature";
+import Settings from "./Settings";
 import "./Clinic.css";
 
 type MachineSpecs = {
@@ -134,6 +135,7 @@ function Clinic() {
           <p>Reading specs…</p>
         )}
       </section>
+      <Settings />
     </div>
   );
 }
