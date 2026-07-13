@@ -5,9 +5,9 @@ import type { Mood } from "./Creature";
 
 type Trigger = keyof typeof LINES;
 
-const IDLE_MIN_MS = 4 * 60_000;
-const IDLE_MAX_MS = 8 * 60_000;
-const MIN_GAP_MS = 90_000;
+const IDLE_MIN_MS = 90_000; // 1.5 min
+const IDLE_MAX_MS = 3 * 60_000; // 3 min
+const MIN_GAP_MS = 45_000; // 45s floor between any lines
 
 type Ctx = {
   creature: string; // e.g. "Grounded Elder"
@@ -21,20 +21,19 @@ export function useChatter(mood: Mood, ctx: Ctx) {
   const prevMood = useRef<Mood | null>(null);
   const speakToken = useRef(0);
 
-  const say = (trigger: Trigger, force = false) => {
+  const say = (
+    trigger: Trigger,
+    force = false,
+    extra?: { app?: string; recent_apps?: string[]; dizzy?: boolean },
+  ) => {
     const now = Date.now();
     if (!force && now - lastSpokeAt.current < MIN_GAP_MS) return;
     const canned = pickLine(trigger, mood);
     if (!canned) return;
     lastSpokeAt.current = now;
 
-    // Show the canned line instantly.
-    setLine(canned);
     const myToken = ++speakToken.current;
-
-
-    console.log("asking groq:", trigger, mood);
-    // Ask Groq in parallel; swap in if it returns before we move on.
+    let settled = false;
     invoke<string | null>("speak", {
       ctx: {
         creature: ctx.creature,
@@ -42,21 +41,28 @@ export function useChatter(mood: Mood, ctx: Ctx) {
         event: trigger,
         hour: new Date().getHours(),
         hint: ctx.hint,
+        app: extra?.app ?? "",
+        recent_apps: extra?.recent_apps ?? [],
+        dizzy: extra?.dizzy ?? false,
       },
     })
       .then((llm) => {
-        // Only replace if this is still the active line.
-        if (llm && speakToken.current === myToken) {
-          setLine(llm);
-        }
+        if (speakToken.current !== myToken) return;
+        settled = true;
+        setLine(llm || canned);
       })
-      .catch((e) => {
-        console.error("speak failed:", e);
+      .catch(() => {
+        if (speakToken.current !== myToken) return;
+        settled = true;
+        setLine(canned);
       });
 
     window.setTimeout(() => {
+      if (!settled && speakToken.current === myToken) setLine(canned);
+    }, 1200);
+    window.setTimeout(() => {
       setLine((cur) => (speakToken.current === myToken ? null : cur));
-    }, 8000);
+    }, 9000);
 
     scheduleIdle();
   };

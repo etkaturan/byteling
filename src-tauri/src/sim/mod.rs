@@ -10,7 +10,7 @@ mod species;
 pub use engine::{Engine, PetState};
 pub use mood::Mood;
 pub use needs::compute_needs;
-pub use species::{hatch, Build, Family, LifeStage, Species};
+pub use species::{hatch, Species};
 
 /// The pet's needs, each 0–100 (100 = perfectly satisfied).
 /// `None` means the sensors backing that need aren't available (yet).

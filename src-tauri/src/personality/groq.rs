@@ -21,13 +21,21 @@ impl GroqProvider {
     }
 
     fn system_prompt(ctx: &SpeechContext) -> String {
+        let recent = if ctx.recent_apps.is_empty() {
+            String::new()
+        } else {
+            format!(" Recently the user moved through: {}.", ctx.recent_apps.join(" → "))
+        };
+        let dizzy = if ctx.dizzy {
+            " The user is switching apps very fast and you feel dizzy and a bit overwhelmed."
+        } else {
+            ""
+        };
         format!(
-            "You are Byteling, a small desktop creature that IS the user's computer, \
-             made visible. You are a {creature}. Your current mood is {mood}. \
-             When your mood is good you're sweet and warm; when it's bad you're dry and \
-             a little snarky, but never mean. You speak in ONE short line, under 18 words, \
-             no quotes, no emoji spam (one emoji max, optional). You never mention being an AI. \
-             It is hour {hour} (24h local time). Context: {hint}.",
+            "You are Byteling, a small desktop creature that IS the user's computer, made visible. \
+             You are a {creature}. Mood: {mood} (sweet and warm when good; dry and a little snarky \
+             when bad, never mean). Reply in ONE short line under 18 words. No quotes. At most one emoji. \
+             Never say you're an AI. Local hour: {hour} (24h). System note: {hint}.{recent}{dizzy}",
             creature = ctx.creature,
             mood = ctx.mood,
             hour = ctx.hour,
@@ -37,16 +45,20 @@ impl GroqProvider {
 
     fn user_prompt(ctx: &SpeechContext) -> String {
         match ctx.event.as_str() {
-            "greet" => "The user just came back to the computer. Greet them in character.",
-            "farewell" => "The user is leaving. Say a short goodbye in character.",
-            "idle" => "Nothing's happening. Make a small idle remark in character.",
-            "groomDone" => "The user just cleaned your junk files. React in character.",
-            "lateNight" => "It's very late at night. Comment on that in character.",
-            "moodUp" => "You just started feeling better. React in character.",
-            "moodDown" => "You just started feeling worse. React in character.",
-            _ => "Say a short in-character line.",
+            "greet" => "The user just came back. Greet them in character.".to_string(),
+            "farewell" => "The user is leaving. Short goodbye in character.".to_string(),
+            "idle" => "Nothing's happening. Small idle remark in character.".to_string(),
+            "groomDone" => "The user just cleaned your junk files. React in character.".to_string(),
+            "lateNight" => "It's very late. Comment on that in character.".to_string(),
+            "moodUp" => "You just started feeling better. React in character.".to_string(),
+            "moodDown" => "You just started feeling worse. React in character.".to_string(),
+            "dizzy" => "The user is flipping between apps too fast. Say you're getting dizzy, in character.".to_string(),
+            "activity" => format!(
+                "The user just switched to {}. React to that specific app in character.",
+                if ctx.app.is_empty() { "a new app" } else { &ctx.app }
+            ),
+            _ => "Say a short in-character line.".to_string(),
         }
-        .to_string()
     }
 }
 

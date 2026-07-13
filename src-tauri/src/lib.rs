@@ -68,23 +68,10 @@ fn has_groq_key(app: tauri::AppHandle) -> bool {
 /// fails — the frontend then keeps its canned line.
 #[tauri::command]
 async fn speak(app: tauri::AppHandle, ctx: SpeechContext) -> Option<String> {
-    let key = match load_key(&app) {
-        Some(k) => {
-            println!("speak: key loaded ({} chars), event={}", k.len(), ctx.event);
-            k
-        }
-        None => {
-            println!("speak: NO KEY loaded");
-            return None;
-        }
-    };
+    let key = load_key(&app)?;
     let provider = GroqProvider::new(key);
-    let result = provider.speak(&ctx).await;
-    println!("speak: groq returned {:?}", result);
-    result
+    provider.speak(&ctx).await
 }
-
-
 
 /// Path to the file where the Groq key is stored (in the OS config dir).
 fn key_path(app: &tauri::AppHandle) -> Option<PathBuf> {
@@ -102,6 +89,35 @@ fn load_key(app: &tauri::AppHandle) -> Option<String> {
         Some(key)
     }
 }
+
+
+/// Friendly display name for a known executable, else a cleaned-up fallback.
+fn pretty_app_name(exe: &str) -> String {
+    let name = match exe {
+        "code.exe" | "cursor.exe" => "VS Code",
+        "chrome.exe" => "Chrome",
+        "firefox.exe" => "Firefox",
+        "msedge.exe" => "Edge",
+        "discord.exe" => "Discord",
+        "spotify.exe" => "Spotify",
+        "steam.exe" => "Steam",
+        "cs2.exe" => "Counter-Strike 2",
+        "explorer.exe" => "File Explorer",
+        "claude.exe" => "Claude",
+        "vlc.exe" => "VLC",
+        "devenv.exe" => "Visual Studio",
+        other => {
+            // Strip ".exe", capitalize first letter.
+            let base = other.strip_suffix(".exe").unwrap_or(other);
+            return base
+                .char_indices()
+                .map(|(i, c)| if i == 0 { c.to_ascii_uppercase() } else { c })
+                .collect();
+        }
+    };
+    name.to_string()
+}
+
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -149,6 +165,7 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_ignore_cursor_events(true);
             }
+
             let cursor_handle = app.handle().clone();
             std::thread::spawn(move || {
                 let mut interactive = false;
@@ -182,6 +199,28 @@ pub fn run() {
                 }
             });
 
+            // Foreground-app awareness: emit when the focused activity changes.
+            let fg_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let mut last: Option<sensors::Activity> = None;
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    if let Some((exe, activity, fullscreen)) = sensors::foreground() {
+                        if Some(activity) != last {
+                            last = Some(activity);
+                            let payload = serde_json::json!({
+                                "app": pretty_app_name(&exe),
+                                "activity": activity,
+                                "fullscreen": fullscreen,
+                            });
+                            let _ = fg_handle.emit("activity-changed", payload);
+                        }
+                    } else {
+                        println!("fg: no foreground detected");
+                    }
+                }
+            });
+
             let clinic =
                 MenuItem::with_id(app, "clinic", "Open clinic", true, None::<&str>)?;
             // System tray: the pet's official residence. Hide/show + quit.
@@ -194,14 +233,12 @@ pub fn run() {
                 .menu(&menu)
                 .tooltip("Byteling")
                 .on_menu_event(|app, event| match event.id.as_ref() {
-
                     "clinic" => {
                         if let Some(w) = app.get_webview_window("clinic") {
                             let _ = w.show();
                             let _ = w.set_focus();
                         }
                     }
-                    
                     "toggle" => {
                         if let Some(w) = app.get_webview_window("main") {
                             if w.is_visible().unwrap_or(true) {

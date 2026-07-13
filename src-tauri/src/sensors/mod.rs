@@ -5,10 +5,12 @@ mod gpu;
 mod storage;
 mod system;
 mod machine;
+mod foreground;
 
 
 pub use gpu::GpuPoller;
 pub use system::SystemPoller;
+pub use foreground::{foreground, Activity};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SystemSnapshot {

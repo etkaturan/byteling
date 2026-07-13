@@ -5,6 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import Creature, { Species, Mood } from "./Creature";
 import SpeechBubble from "./SpeechBubble";
 import { useChatter } from "./useChatter";
+import { recordSwitch, recentApps, isDizzy } from "./activityBrain";
 import "./App.css";
 
 type Needs = {
@@ -50,6 +51,7 @@ function App() {
     creature: creatureName,
     hint,
   });
+  const [dizzy, setDizzy] = useState(false);
 
   const lastClick = { current: 0 } as { current: number };
 
@@ -60,7 +62,6 @@ function App() {
 
     const now = Date.now();
     if (now - lastClick.current < 300) {
-      // Double-click detected → pet it, don't drag.
       say("petted", true);
       lastClick.current = 0;
       return;
@@ -69,16 +70,9 @@ function App() {
     getCurrentWindow().startDragging().catch(console.error);
   };
 
-  // Right-click the creature → toggle the action menu.
   const onContext = (e: React.MouseEvent) => {
     e.preventDefault();
     setMenuOpen((v) => !v);
-  };
-
-  // Double-click → pet it: a quick happy reaction.
-  const onDoubleClick = () => {
-    console.log("double-clicked!");
-    say("petted", true);
   };
 
   const requestGroom = async () => {
@@ -114,12 +108,48 @@ function App() {
     invoke<PetState | null>("get_pet_state").then((s) => {
       if (s) setPet(s);
     });
-    const unlisten = listen<PetState>("pet-state-changed", (e) =>
+
+    const unlistenPet = listen<PetState>("pet-state-changed", (e) =>
       setPet(e.payload),
     );
+
+    let activityTimer: number | null = null;
+    let lastActivitySpoke = 0;
+    const unlistenActivity = listen<{
+      app: string;
+      activity: string;
+      fullscreen: boolean;
+    }>("activity-changed", (e) => {
+      const { app, activity, fullscreen } = e.payload;
+      recordSwitch(app);
+
+      if (isDizzy()) {
+        setDizzy(true);
+        say("dizzy", true, { dizzy: true, recent_apps: recentApps() });
+        window.setTimeout(() => setDizzy(false), 5000);
+        return;
+      }
+
+      if (fullscreen) return; // still stay quiet in fullscreen
+      // (removed the `activity === "Other"` skip so every named app reacts)
+
+      // Settle ~1.5s in the app, then react — with its own 5s cooldown,
+      // bypassing the global chatter floor so app-changes reliably speak.
+      if (activityTimer) window.clearTimeout(activityTimer);
+      activityTimer = window.setTimeout(() => {
+        const now = Date.now();
+        if (now - lastActivitySpoke < 5000) return;
+        lastActivitySpoke = now;
+        say("activity", true, { app, recent_apps: recentApps() });
+      }, 1500);
+    });
+
     return () => {
-      unlisten.then((f) => f());
+      unlistenPet.then((f) => f());
+      unlistenActivity.then((f) => f());
+      if (activityTimer) window.clearTimeout(activityTimer);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!species) return null;
@@ -129,15 +159,13 @@ function App() {
       {line && <SpeechBubble text={line} onDismiss={dismiss} />}
 
       <div
-        className="creature-holder"
+        className={`creature-holder ${dizzy ? "dizzy" : ""}`}
         data-tauri-drag-region
         onContextMenu={onContext}
-        onDoubleClick={onDoubleClick}
       >
         <Creature species={species} mood={mood} size={150} />
       </div>
 
-      {/* Stats appear only when toggled on. */}
       {showStats && pet && (
         <div className="debug">
           {mood} ({Math.round(pet.mood_score)})
@@ -150,7 +178,6 @@ function App() {
         </div>
       )}
 
-      {/* Right-click menu. */}
       {menuOpen && !groomPreview && (
         <div className="pet-menu">
           <button
@@ -163,16 +190,12 @@ function App() {
           >
             {grooming ? "Grooming…" : groomMsg ?? "🧹 Groom"}
           </button>
-          <button
-            className="menu-item"
-            onClick={() => setShowStats((v) => !v)}
-          >
+          <button className="menu-item" onClick={() => setShowStats((v) => !v)}>
             {showStats ? "Hide stats" : "Show stats"}
           </button>
         </div>
       )}
 
-      {/* Groom confirmation. */}
       {groomPreview && (
         <div className="confirm">
           <div className="confirm-text">
@@ -183,10 +206,7 @@ function App() {
             <button className="care-btn yes" onClick={confirmGroom}>
               Yes
             </button>
-            <button
-              className="care-btn no"
-              onClick={() => setGroomPreview(null)}
-            >
+            <button className="care-btn no" onClick={() => setGroomPreview(null)}>
               No
             </button>
           </div>

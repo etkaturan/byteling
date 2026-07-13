@@ -115,3 +115,14 @@ body,
   opacity: 0.6;
   cursor: default;
 }
+
+
+
+.creature-holder.dizzy {
+  animation: dizzy-wobble 0.5s ease-in-out infinite;
+}
+@keyframes dizzy-wobble {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-8deg); }
+  75% { transform: rotate(8deg); }
+}

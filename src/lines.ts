@@ -65,4 +65,35 @@ export const LINES = {
     down: ["Oh… thanks. I needed that.", "*weak purr*", "That's nice…"],
     neutral: ["*purrs*", "Hehe!", "*leans into it*"],
   },
+
+  onCoding: {
+    up: ["Ooh, coding time! Let's build something.", "Back in the editor — nice.", "Compile away, I'm ready!"],
+    down: ["Coding while I feel like this? Bold.", "Try not to overheat me this session…", "*sigh* debugging again?"],
+    neutral: ["Coding session, huh?", "Let's write some bugs — I mean features.", "Editor's open. Focus mode."],
+  },
+  onGaming: {
+    up: ["Game time! Don't cook my GPU 😄", "Ooh, are we playing? Fun!", "Let's go! …gently on the fans, please."],
+    down: ["Gaming while I'm unwell? My poor fans.", "You sure? I'm already struggling here.", "This is gonna hurt my temps…"],
+    neutral: ["Game on — watch my temperature!", "A game? I'll try to keep cool.", "Here we go, hold onto your framerate."],
+  },
+  onBrowsing: {
+    up: ["Off to browse? Have fun out there.", "The web awaits!", "Ooh, what are we looking up?"],
+    down: ["More tabs? My memory's already tired…", "Please not 50 tabs today.", "*groans at the tab count*"],
+    neutral: ["Browsing time.", "Off into the internet we go.", "Mind the tabs!"],
+  },
+  onMedia: {
+    up: ["Ooh, music? Let's vibe.", "Something to watch? Nice.", "Turn it up!"],
+    down: ["Media while I'm struggling… okay.", "Hope it's relaxing, I need it.", "*tired hum along*"],
+    neutral: ["Media time.", "Enjoy the show.", "Press play!"],
+  },
+  dizzy: {
+    up: ["Whoa, slow down! You're making me dizzy 😵", "So many apps! Give me a sec…", "Round and round we go — dizzy!"],
+    down: ["Ugh, stop switching so fast, I feel sick…", "Too much… need a sec…", "*wobbles* …everything's spinning."],
+    neutral: ["Whoa — dizzy! One thing at a time?", "Too fast! Need a sec…", "My head's spinning 😵"],
+  },
+  activity: {
+    up: ["Ooh, something new!", "Nice, switching it up.", "Let's do this!"],
+    down: ["Another app? …okay.", "*tired* what now?", "Sure, why not."],
+    neutral: ["New app, huh?", "Alright, here we go.", "Switching gears."],
+  },
 } satisfies Record<string, LineSet>;
