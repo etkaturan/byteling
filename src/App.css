@@ -72,3 +72,9 @@ body,
   padding: 2px 10px;
   border-radius: 10px;
 }
+
+.needs {
+  font-size: 10px;
+  opacity: 0.8;
+  margin-top: 2px;
+}

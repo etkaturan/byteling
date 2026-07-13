@@ -80,6 +80,14 @@ function App() {
       </div>
       <div className="debug">
         {mood} {pet ? `(${Math.round(pet.mood_score)})` : "…waking up"}
+        {pet && (
+          <div className="needs">
+            C{Math.round(pet.needs.comfort)} · S
+            {pet.needs.space === null ? "–" : Math.round(pet.needs.space)} · T
+            {pet.needs.tidiness === null ? "–" : Math.round(pet.needs.tidiness)} · R
+            {Math.round(pet.needs.rest)} · E{Math.round(pet.needs.energy)}
+          </div>
+        )}
       </div>
     </main>
   );
