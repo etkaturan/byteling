@@ -18,9 +18,13 @@ pub fn compute_needs(s: &SystemSnapshot) -> Needs {
     };
 
     // Space: ≥25% free is comfortable, ≤3% free is critical.
-    let space = s
-        .system_drive_free_pct
-        .map(|free| ramp(free, 25.0, 3.0));
+    let space = s.system_drive_free_pct.map(|free| ramp(free, 25.0, 3.0));
+
+    // Tidiness: junk piling up. Spotless ≤200MB combined, filthy ≥8GB.
+    let tidiness = match (s.temp_mb, s.recycle_bin_mb) {
+        (Some(t), Some(r)) => Some(ramp((t + r) as f32, 200.0, 8000.0)),
+        _ => None,
+    };
 
     // Rest: fresh within a day, exhausted after a week without reboot.
     let rest = ramp(s.uptime_hours, 24.0, 168.0);
@@ -31,7 +35,7 @@ pub fn compute_needs(s: &SystemSnapshot) -> Needs {
     Needs {
         comfort,
         space,
-        tidiness: None, // sensors not built yet — arrives with the storage scan
+        tidiness,
         rest,
         energy,
     }
@@ -42,7 +46,13 @@ mod tests {
     use super::*;
     use crate::sensors::GpuReading;
 
-    fn snapshot(cpu: f32, ram: f32, uptime_h: f32, free: f32, gpu_temp: Option<f32>) -> SystemSnapshot {
+    fn snapshot(
+        cpu: f32,
+        ram: f32,
+        uptime_h: f32,
+        free: f32,
+        gpu_temp: Option<f32>,
+    ) -> SystemSnapshot {
         SystemSnapshot {
             cpu_load_pct: cpu,
             ram_used_pct: ram,
@@ -55,6 +65,8 @@ mod tests {
                 load_pct: 50.0,
                 vram_used_pct: 40.0,
             }),
+            temp_mb: None,
+            recycle_bin_mb: None,
         }
     }
 
@@ -94,5 +106,18 @@ mod tests {
     fn week_of_uptime_exhausts_rest() {
         let needs = compute_needs(&snapshot(10.0, 40.0, 170.0, 60.0, Some(45.0)));
         assert!(needs.rest < 2.0);
+    }
+
+    #[test]
+    fn junk_lowers_tidiness() {
+        let mut clean = snapshot(10.0, 40.0, 5.0, 60.0, Some(45.0));
+        clean.temp_mb = Some(50);
+        clean.recycle_bin_mb = Some(50);
+        assert!(compute_needs(&clean).tidiness.unwrap() > 95.0);
+
+        let mut filthy = snapshot(10.0, 40.0, 5.0, 60.0, Some(45.0));
+        filthy.temp_mb = Some(6000);
+        filthy.recycle_bin_mb = Some(4000);
+        assert!(compute_needs(&filthy).tidiness.unwrap() < 5.0);
     }
 }

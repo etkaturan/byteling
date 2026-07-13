@@ -80,6 +80,8 @@ mod tests {
                 load_pct: 50.0,
                 vram_used_pct: 40.0,
             }),
+            temp_mb: None,
+            recycle_bin_mb: None,
         }
     }
 
