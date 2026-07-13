@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Byteling",
         "width": 260,
         "height": 300,
@@ -21,6 +22,14 @@
         "skipTaskbar": true,
         "resizable": false,
         "shadow": false
+      },
+      {
+        "label": "clinic",
+        "title": "Byteling Clinic",
+        "width": 420,
+        "height": 560,
+        "resizable": true,
+        "visible": false
       }
     ],
     "security": {
