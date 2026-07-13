@@ -53,7 +53,8 @@ impl SystemPoller {
     }
 
     /// Stable hardware identity facts — safe to call once at startup.
-    pub fn hardware_identity(&mut self) -> (String, u64) {
+    /// Returns (cpu_brand, ram_gb, physical_core_count).
+    pub fn hardware_identity(&mut self) -> (String, u64, u32) {
         self.sys.refresh_cpu_all();
         let cpu_brand = self
             .sys
@@ -63,6 +64,7 @@ impl SystemPoller {
             .unwrap_or_else(|| "Unknown CPU".to_string());
         self.sys.refresh_memory();
         let ram_gb = self.sys.total_memory() / 1_000_000_000;
-        (cpu_brand, ram_gb)
+        let cores = sysinfo::System::physical_core_count().unwrap_or(1) as u32;
+        (cpu_brand, ram_gb, cores)
     }
 }

@@ -1,88 +1,102 @@
-//! Species Genesis — every machine hatches its own deterministic creature.
-//! See docs/ARCHITECTURE.md §6. Same hardware → same Byteling, forever.
+//! Species Genesis — every machine hatches its own creature, assembled along
+//! four axes from real hardware. See docs/ARCHITECTURE.md §6.
+//! Same hardware → same creature, forever.
 
 use sha2::{Digest, Sha256};
 
-/// The body plan. GPU tier biases the roll but never fully determines it.
+use crate::sensors::HardwareIdentity;
+
+/// Family — the biggest divide, from form factor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-pub enum Archetype {
-    /// Small, round, low-power spirits. Common on modest machines.
-    Wisp,
-    /// Sturdy, boxy, dependable. The workhorse build.
-    Golem,
-    /// Quick, spiky, electric. Gaming-rig energy.
-    Volt,
-    /// Long, calm, floating. Big-RAM machines dream bigger.
-    Drake,
+pub enum Family {
+    /// Laptops: compact, airborne, wing/fin-based.
+    Aerial,
+    /// Desktops: larger, grounded, rooted.
+    Grounded,
 }
 
-/// How the creature carries itself — flavors animations and (later) AI voice.
+/// Life stage — the same creature at a different age.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-pub enum Temperament {
-    Zippy,
-    Stoic,
-    Curious,
-    Dozy,
+pub enum LifeStage {
+    Hatchling,
+    Adult,
+    Elder,
 }
 
+/// Build — size and radiance, from GPU/CPU power tier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub enum Build {
+    Slight,
+    Sturdy,
+    Mighty,
+}
+
+/// The fully-assembled creature.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Species {
-    pub archetype: Archetype,
-    pub temperament: Temperament,
-    /// HSL hue 0–360 — the palette anchor for sprites and UI accents.
+    pub family: Family,
+    pub life_stage: LifeStage,
+    pub build: Build,
+    /// HSL hue 0–360 — base color.
     pub hue: u16,
-    /// Cosmetic marking count (whiskers/antennae), 1–4 — from CPU cores later;
-    /// for now rolled from the seed.
+    /// Number of limbs/appendages, from CPU cores (clamped 2–8).
+    pub limbs: u8,
+    /// Cosmetic marking density, 1–4, from the fingerprint.
     pub markings: u8,
+    /// Movement speed multiplier: >1 quick (SSD), <1 languid. Detail only.
+    pub liveliness: f32,
 }
 
-/// Deterministic: identical inputs always produce the identical creature.
-pub fn hatch(cpu_brand: &str, ram_gb: u64, gpu_name: Option<&str>) -> Species {
+pub fn hatch(id: &HardwareIdentity) -> Species {
+    // Deterministic seed from the stable fingerprint.
     let fingerprint = format!(
-        "{}|{}|{}",
-        cpu_brand.trim().to_lowercase(),
-        ram_gb,
-        gpu_name.unwrap_or("none").trim().to_lowercase(),
+        "{}|{}|{}|{}",
+        id.cpu.trim().to_lowercase(),
+        id.ram_gb,
+        id.gpu.as_deref().unwrap_or("none").trim().to_lowercase(),
+        id.is_laptop,
     );
     let hash = Sha256::digest(fingerprint.as_bytes());
-
-    // Consume distinct hash bytes for distinct traits, so traits are
-    // independent of each other.
     let b = hash.as_slice();
 
-    // GPU tier bias: dedicated GPU machines lean Volt/Drake, others Wisp/Golem.
-    let has_dedicated_gpu = gpu_name.is_some();
-    let archetype = match (has_dedicated_gpu, b[0] % 4) {
-        (true, 0) => Archetype::Volt,
-        (true, 1) => Archetype::Drake,
-        (true, 2) => Archetype::Volt,
-        (true, _) => Archetype::Golem,
-        (false, 0) => Archetype::Wisp,
-        (false, 1) => Archetype::Golem,
-        (false, 2) => Archetype::Wisp,
-        (false, _) => Archetype::Drake,
+    // Axis 1: Family from form factor.
+    let family = if id.is_laptop {
+        Family::Aerial
+    } else {
+        Family::Grounded
     };
 
-    // Big-RAM machines lean calm; small-RAM lean zippy. Seed still decides.
-    let temperament = match (ram_gb >= 24, b[1] % 4) {
-        (true, 0) => Temperament::Stoic,
-        (true, 1) => Temperament::Dozy,
-        (true, 2) => Temperament::Curious,
-        (true, _) => Temperament::Stoic,
-        (false, 0) => Temperament::Zippy,
-        (false, 1) => Temperament::Curious,
-        (false, 2) => Temperament::Zippy,
-        (false, _) => Temperament::Dozy,
+    // Axis 2: Life stage from age. Unknown age → Adult (safe middle).
+    let life_stage = match id.age_years {
+        Some(a) if a < 1.0 => LifeStage::Hatchling,
+        Some(a) if a < 4.0 => LifeStage::Adult,
+        Some(_) => LifeStage::Elder,
+        None => LifeStage::Adult,
     };
 
+    // Axis 3: Build from power tier. Heuristic: dedicated GPU + core count.
+    let build = match (id.gpu.is_some(), id.cores) {
+        (true, c) if c >= 12 => Build::Mighty,
+        (true, _) => Build::Sturdy,
+        (false, c) if c >= 8 => Build::Sturdy,
+        (false, _) => Build::Slight,
+    };
+
+    // Axis 4: Individuality.
     let hue = (u32::from(b[2]) * 360 / 255) as u16;
+    let limbs = id.cores.clamp(2, 8) as u8;
     let markings = 1 + (b[3] % 4);
+    // Liveliness leans on RAM as a rough proxy (no disk-type sensor yet).
+    let liveliness = 0.85 + (b[4] % 30) as f32 / 100.0; // 0.85–1.14
 
     Species {
-        archetype,
-        temperament,
+        family,
+        life_stage,
+        build,
         hue,
+        limbs,
         markings,
+        liveliness,
     }
 }
 
@@ -90,44 +104,56 @@ pub fn hatch(cpu_brand: &str, ram_gb: u64, gpu_name: Option<&str>) -> Species {
 mod tests {
     use super::*;
 
+    fn id(cpu: &str, ram: u64, cores: u32, gpu: Option<&str>, laptop: bool, age: Option<f32>) -> HardwareIdentity {
+        HardwareIdentity {
+            cpu: cpu.into(),
+            ram_gb: ram,
+            cores,
+            gpu: gpu.map(|s| s.into()),
+            is_laptop: laptop,
+            age_years: age,
+        }
+    }
+
     #[test]
-    fn same_hardware_same_species() {
-        let a = hatch("Intel Core i7-8700K", 32, Some("NVIDIA GeForce GTX 1080 Ti"));
-        let b = hatch("Intel Core i7-8700K", 32, Some("NVIDIA GeForce GTX 1080 Ti"));
-        assert_eq!(a.archetype, b.archetype);
-        assert_eq!(a.temperament, b.temperament);
+    fn laptop_is_aerial_desktop_is_grounded() {
+        let laptop = hatch(&id("CPU", 16, 4, None, true, Some(2.0)));
+        let desktop = hatch(&id("CPU", 16, 4, None, false, Some(2.0)));
+        assert_eq!(laptop.family, Family::Aerial);
+        assert_eq!(desktop.family, Family::Grounded);
+    }
+
+    #[test]
+    fn age_maps_to_life_stage() {
+        assert_eq!(hatch(&id("C", 8, 4, None, false, Some(0.5))).life_stage, LifeStage::Hatchling);
+        assert_eq!(hatch(&id("C", 8, 4, None, false, Some(2.0))).life_stage, LifeStage::Adult);
+        assert_eq!(hatch(&id("C", 8, 4, None, false, Some(6.0))).life_stage, LifeStage::Elder);
+    }
+
+    #[test]
+    fn unknown_age_defaults_to_adult() {
+        assert_eq!(hatch(&id("C", 8, 4, None, false, None)).life_stage, LifeStage::Adult);
+    }
+
+    #[test]
+    fn strong_machine_is_mighty() {
+        let s = hatch(&id("Ryzen 9", 64, 16, Some("RTX 4090"), false, Some(1.0)));
+        assert_eq!(s.build, Build::Mighty);
+    }
+
+    #[test]
+    fn deterministic_same_hardware() {
+        let a = hatch(&id("i7-8700K", 32, 6, Some("GTX 1080 Ti"), false, Some(6.0)));
+        let b = hatch(&id("i7-8700K", 32, 6, Some("GTX 1080 Ti"), false, Some(6.0)));
         assert_eq!(a.hue, b.hue);
+        assert_eq!(a.limbs, b.limbs);
         assert_eq!(a.markings, b.markings);
     }
 
     #[test]
-    fn whitespace_and_case_do_not_change_identity() {
-        let a = hatch("Intel Core i7-8700K", 32, Some("NVIDIA GeForce GTX 1080 Ti"));
-        let b = hatch("  intel core I7-8700K ", 32, Some("nvidia geforce gtx 1080 ti"));
-        assert_eq!(a.hue, b.hue);
-        assert_eq!(a.archetype, b.archetype);
-    }
-
-    #[test]
-    fn different_hardware_differs_somewhere() {
-        let a = hatch("Intel Core i7-8700K", 32, Some("NVIDIA GeForce GTX 1080 Ti"));
-        let b = hatch("AMD Ryzen 9 7950X", 64, Some("NVIDIA GeForce RTX 4090"));
-        let identical = a.archetype == b.archetype
-            && a.temperament == b.temperament
-            && a.hue == b.hue
-            && a.markings == b.markings;
-        assert!(!identical, "distinct machines should hatch distinct creatures");
-    }
-
-    #[test]
-    fn hue_is_valid() {
-        let s = hatch("Any CPU", 8, None);
-        assert!(s.hue < 360);
-    }
-
-    #[test]
-    fn markings_in_range() {
-        let s = hatch("Any CPU", 8, None);
-        assert!((1..=4).contains(&s.markings));
+    fn limbs_track_cores_clamped() {
+        assert_eq!(hatch(&id("C", 8, 6, None, false, None)).limbs, 6);
+        assert_eq!(hatch(&id("C", 8, 32, None, false, None)).limbs, 8); // clamped
+        assert_eq!(hatch(&id("C", 8, 1, None, false, None)).limbs, 2); // clamped
     }
 }

@@ -1,0 +1,142 @@
+.creature {
+  display: block;
+  overflow: visible;
+}
+
+/* Idle: gentle breathing on the body group. Speed set per-creature. */
+.creature-body {
+  animation: breathe var(--speed, 1s) ease-in-out infinite;
+  animation-duration: calc(var(--speed) * 3);
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(var(--s, 1));
+  }
+  50% {
+    transform: scale(calc(var(--s, 1) * 1.03));
+  }
+}
+
+/* Aura pulse. */
+.aura {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: aura-pulse 3s ease-in-out infinite;
+}
+@keyframes aura-pulse {
+  0%,
+  100% {
+    opacity: 0.15;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.3;
+    transform: scale(1.08);
+  }
+}
+
+/* Blink. */
+.eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: blink 5s ease-in-out infinite;
+}
+@keyframes blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.1);
+  }
+}
+
+/* ---- Mood layers: applied to the whole SVG ---- */
+
+/* Thriving: floats up happily, bright. */
+.mood-thriving {
+  animation: float-happy 2.6s ease-in-out infinite;
+  filter: brightness(1.08) saturate(1.1);
+}
+@keyframes float-happy {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+/* Content: calm, subtle sway. */
+.mood-content {
+  animation: sway 4s ease-in-out infinite;
+}
+@keyframes sway {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-2px) rotate(1deg);
+  }
+}
+
+/* Uneasy: small nervous shifts. */
+.mood-uneasy {
+  animation: fidget 2s ease-in-out infinite;
+  filter: saturate(0.95);
+}
+@keyframes fidget {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-1.5px);
+  }
+  75% {
+    transform: translateX(1.5px);
+  }
+}
+
+/* Unwell: sinks and dims, droops. */
+.mood-unwell {
+  animation: droop 3.5s ease-in-out infinite;
+  filter: brightness(0.9) saturate(0.75);
+}
+@keyframes droop {
+  0%,
+  100% {
+    transform: translateY(2px) scale(1, 0.98);
+  }
+  50% {
+    transform: translateY(4px) scale(1, 0.96);
+  }
+}
+
+/* Critical: unstable flicker, like failing hardware. */
+.mood-critical {
+  animation: flicker 0.9s steps(2, end) infinite;
+  filter: brightness(0.85) saturate(0.6);
+}
+@keyframes flicker {
+  0%,
+  100% {
+    opacity: 1;
+    transform: translateY(3px);
+  }
+  48% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 0.55;
+    transform: translate(0.5px, 3px);
+  }
+  52% {
+    opacity: 0.85;
+  }
+}
