@@ -159,3 +159,21 @@
   font-size: 14px;
   font-weight: 500;
 }
+
+.settings-btn {
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  background: #4a7dff;
+  color: #fff;
+  cursor: pointer;
+}
+.settings-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.settings-btn.ghost {
+  background: #2a2f3a;
+}
