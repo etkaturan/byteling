@@ -1,5 +1,6 @@
 mod sensors;
 mod sim;
+mod care;
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -14,6 +15,16 @@ struct AppState {
 #[tauri::command]
 fn get_species(state: tauri::State<AppState>) -> sim::Species {
     state.species.clone()
+}
+
+#[tauri::command]
+fn preview_groom() -> care::GroomReport {
+    care::groom_preview()
+}
+
+#[tauri::command]
+fn do_groom() -> care::GroomReport {
+    care::perform_groom()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -72,7 +83,7 @@ pub fn run() {
                     let x = cursor.x - pos.x as f64;
                     let y = cursor.y - pos.y as f64;
                     let inside =
-                        x > 0.22 * w && x < 0.78 * w && y > 0.42 * h && y < 0.92 * h;
+                        x > 0.12 * w && x < 0.88 * w && y > 0.42 * h && y < 1.0 * h;
 
                     if inside != interactive {
                         interactive = inside;
@@ -107,7 +118,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_species])
+        .invoke_handler(tauri::generate_handler![get_species, preview_groom, do_groom])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

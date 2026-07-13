@@ -28,6 +28,12 @@ type PetState = {
   mood: Mood;
 };
 
+type GroomReport = {
+  freed_mb: number;
+  files_removed: number;
+  files_skipped: number;
+};
+
 /** Breath cycle duration per mood — sick pets breathe slow and heavy. */
 const BREATH_SECONDS: Record<Mood, number> = {
   Thriving: 2.2,
@@ -40,10 +46,44 @@ const BREATH_SECONDS: Record<Mood, number> = {
 function App() {
   const [species, setSpecies] = useState<Species | null>(null);
   const [pet, setPet] = useState<PetState | null>(null);
+  const [grooming, setGrooming] = useState(false);
+  const [groomMsg, setGroomMsg] = useState<string | null>(null);
+  const [groomPreview, setGroomPreview] = useState<GroomReport | null>(null);
 
-  const startDrag = (e: any) => {
+  const startDrag = (e: React.MouseEvent) => {
+    // Don't hijack clicks on interactive controls (buttons).
+    if ((e.target as HTMLElement).closest("button")) return;
     if (e.button === 0) {
       getCurrentWindow().startDragging().catch(console.error);
+    }
+  };
+
+  // Step 1: ask Rust how much could be freed, then show our own confirm panel.
+  const requestGroom = async () => {
+    try {
+      const preview = await invoke<GroomReport>("preview_groom");
+      setGroomPreview(preview);
+    } catch (err) {
+      console.error(err);
+      setGroomMsg("Preview failed");
+      setTimeout(() => setGroomMsg(null), 6000);
+    }
+  };
+
+  // Step 2: user clicked "Yes" — actually perform the cleanup.
+  const confirmGroom = async () => {
+    setGroomPreview(null);
+    setGrooming(true);
+    setGroomMsg(null);
+    try {
+      const report = await invoke<GroomReport>("do_groom");
+      setGroomMsg(`Freed ${report.freed_mb} MB ✨`);
+    } catch (err) {
+      console.error(err);
+      setGroomMsg("Groom failed");
+    } finally {
+      setGrooming(false);
+      setTimeout(() => setGroomMsg(null), 6000);
     }
   };
 
@@ -78,6 +118,7 @@ function App() {
           <span className="eye" />
         </div>
       </div>
+
       <div className="debug">
         {mood} {pet ? `(${Math.round(pet.mood_score)})` : "…waking up"}
         {pet && (
@@ -89,6 +130,34 @@ function App() {
           </div>
         )}
       </div>
+
+      {groomPreview ? (
+        <div className="confirm">
+          <div className="confirm-text">
+            Clear ~{groomPreview.freed_mb} MB ({groomPreview.files_removed} files)
+            and empty the recycle bin?
+          </div>
+          <div className="confirm-actions">
+            <button className="care-btn yes" onClick={confirmGroom}>
+              Yes
+            </button>
+            <button
+              className="care-btn no"
+              onClick={() => setGroomPreview(null)}
+            >
+              No
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          className="care-btn"
+          onClick={requestGroom}
+          disabled={grooming}
+        >
+          {grooming ? "Grooming…" : groomMsg ?? "🧹 Groom"}
+        </button>
+      )}
     </main>
   );
 }
