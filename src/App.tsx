@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import Creature, { Species, Mood } from "./Creature";
+import SpeechBubble from "./SpeechBubble";
+import { useChatter } from "./useChatter";
 import "./App.css";
 
 type Needs = {
@@ -32,6 +34,9 @@ function App() {
   const [groomMsg, setGroomMsg] = useState<string | null>(null);
   const [groomPreview, setGroomPreview] = useState<GroomReport | null>(null);
 
+  const mood: Mood = pet?.mood ?? "Content";
+  const { line, say, dismiss } = useChatter(mood);
+
   const startDrag = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("button")) return;
     if (e.button === 0) {
@@ -57,6 +62,7 @@ function App() {
     try {
       const report = await invoke<GroomReport>("do_groom");
       setGroomMsg(`Freed ${report.freed_mb} MB ✨`);
+      say("groomDone", true);
     } catch (err) {
       console.error(err);
       setGroomMsg("Groom failed");
@@ -81,10 +87,10 @@ function App() {
 
   if (!species) return null;
 
-  const mood: Mood = pet?.mood ?? "Content";
-
   return (
     <main className="stage" onMouseDown={startDrag}>
+      {line && <SpeechBubble text={line} onDismiss={dismiss} />}
+
       <div className="creature-holder" data-tauri-drag-region>
         <Creature species={species} mood={mood} size={150} />
       </div>
