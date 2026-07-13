@@ -5,7 +5,6 @@ import App from "./App";
 import Clinic from "./Clinic";
 import "./App.css";
 
-import Gallery from "./Gallery";
 
 // Each window renders a different page, decided by its Tauri label.
 const label = getCurrentWindow().label;

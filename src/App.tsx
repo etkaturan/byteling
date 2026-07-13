@@ -120,7 +120,7 @@ function App() {
       activity: string;
       fullscreen: boolean;
     }>("activity-changed", (e) => {
-      const { app, activity, fullscreen } = e.payload;
+      const { app, fullscreen } = e.payload;
       recordSwitch(app);
 
       if (isDizzy()) {

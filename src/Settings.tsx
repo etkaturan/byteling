@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { enable, isEnabled, disable } from "@tauri-apps/plugin-autostart";
 
 function Settings() {
   const [hasKey, setHasKey] = useState(false);
   const [keyInput, setKeyInput] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  const [autostart, setAutostart] = useState(false);
 
   useEffect(() => {
     invoke<boolean>("has_groq_key").then(setHasKey);
+    isEnabled().then(setAutostart).catch(() => {});
   }, []);
 
   const saveKey = async () => {
@@ -28,6 +31,20 @@ function Settings() {
     setHasKey(false);
     setStatus("Cleared");
     setTimeout(() => setStatus(null), 4000);
+  };
+
+  const toggleAutostart = async () => {
+    try {
+      if (autostart) {
+        await disable();
+        setAutostart(false);
+      } else {
+        await enable();
+        setAutostart(true);
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   return (
@@ -70,6 +87,28 @@ function Settings() {
         Get a free key at console.groq.com. Your key is stored locally on this
         machine and never leaves it except to call Groq.
       </p>
+
+      <div style={{ marginTop: 16, borderTop: "1px solid #232733", paddingTop: 14 }}>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            fontSize: 14,
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={autostart}
+            onChange={toggleAutostart}
+          />
+          Launch Byteling when the computer starts
+        </label>
+        <p style={{ fontSize: 11, color: "#626878", marginTop: 6 }}>
+          Your Byteling will greet you each time you turn on your PC.
+        </p>
+      </div>
     </section>
   );
 }

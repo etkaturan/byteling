@@ -10,6 +10,7 @@ use tauri::{Emitter, Manager};
 use personality::{GroqProvider, SpeechContext, VoiceProvider};
 use std::fs;
 use std::path::PathBuf;
+use tauri_plugin_autostart::MacosLauncher;
 
 /// App-wide state available to commands.
 struct AppState {
