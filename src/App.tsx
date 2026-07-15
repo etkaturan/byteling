@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import {
+  getCurrentWindow,
+  currentMonitor,
+  LogicalPosition,
+} from "@tauri-apps/api/window";
 import { Species, Mood } from "./Creature";
 import SpeechBubble from "./SpeechBubble";
 import { useChatter } from "./useChatter";
@@ -10,6 +14,7 @@ import PetView from "./pets/PetView";
 import { getCharacter, CHARACTERS } from "./pets/registry";
 import type { Action } from "./pets/types";
 import TrailEffect from "./effects/TrailEffect";
+import { RoamBrain, configFor, type RoamMode } from "./roaming";
 import "./App.css";
 
 type Needs = {
@@ -45,6 +50,12 @@ function App() {
   const [dizzy, setDizzy] = useState(false);
   const [vel, setVel] = useState({ vx: 0, vy: 0 });
   const [trailOn, setTrailOn] = useState(true);
+  const [roamMode, setRoamMode] = useState<RoamMode>("still");
+
+  const userControlling = useRef(false);
+  const roamRaf = useRef<number | null>(null);
+  const brain = useRef<RoamBrain | null>(null);
+  const fullscreenNow = useRef(false);
 
   const dragRaf = useRef<number | null>(null);
   const lastPos = useRef<{ x: number; y: number; t: number } | null>(null);
@@ -78,14 +89,12 @@ function App() {
         const vx = ((pos.x - lastPos.current.x) / dt) * 16;
         const vy = ((pos.y - lastPos.current.y) / dt) * 16;
         setVel({ vx, vy });
-        console.log("vel", vx.toFixed(1), vy.toFixed(1));
       }
       lastPos.current = { x: pos.x, y: pos.y, t: now };
     } catch {
       /* window may be mid-move; ignore */
     }
     dragRaf.current = requestAnimationFrame(sampleVelocity);
-    
   };
 
   const stopSampling = () => {
@@ -100,19 +109,24 @@ function App() {
     if ((e.target as HTMLElement).closest(".pet-menu")) return;
     if (e.button !== 0) return;
 
+    // Rail: the user always wins — abandon the wander plan instantly.
+    userControlling.current = true;
+    brain.current?.interrupt();
+
     const now = Date.now();
     if (now - lastClick.current < 300) {
       say("petted", true);
       lastClick.current = 0;
+      userControlling.current = false;
       return;
     }
     lastClick.current = now;
 
-    // Start measuring motion; stop when the mouse is released anywhere.
     lastPos.current = null;
     if (!dragRaf.current) dragRaf.current = requestAnimationFrame(sampleVelocity);
     const onUp = () => {
       stopSampling();
+      userControlling.current = false;
       window.removeEventListener("mouseup", onUp);
     };
     window.addEventListener("mouseup", onUp);
@@ -159,18 +173,20 @@ function App() {
       if (s) setPet(s);
     });
     invoke<string>("get_active_character").then(setActiveCharId);
-    
+    invoke<boolean>("get_trail_enabled").then(setTrailOn);
+    invoke<string>("get_roam_mode").then((m) => setRoamMode(m as RoamMode));
+
     const unlistenChar = listen<string>("active-character-changed", (e) =>
       setActiveCharId(e.payload),
     );
-
     const unlistenPet = listen<PetState>("pet-state-changed", (e) =>
       setPet(e.payload),
     );
-
-    invoke<boolean>("get_trail_enabled").then(setTrailOn);
     const unlistenTrail = listen<boolean>("trail-enabled-changed", (e) =>
       setTrailOn(e.payload),
+    );
+    const unlistenRoam = listen<string>("roam-mode-changed", (e) =>
+      setRoamMode(e.payload as RoamMode),
     );
 
     let activityTimer: number | null = null;
@@ -182,6 +198,7 @@ function App() {
     }>("activity-changed", (e) => {
       const { app, fullscreen } = e.payload;
       recordSwitch(app);
+      fullscreenNow.current = fullscreen; // rail: no roaming in fullscreen
 
       if (isDizzy()) {
         setDizzy(true);
@@ -205,15 +222,79 @@ function App() {
       unlistenPet.then((f) => f());
       unlistenActivity.then((f) => f());
       unlistenChar.then((f) => f());
+      unlistenTrail.then((f) => f());
+      unlistenRoam.then((f) => f());
       if (activityTimer) window.clearTimeout(activityTimer);
       if (dragRaf.current) cancelAnimationFrame(dragRaf.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The roaming loop. Rails: never while the user is controlling, never while
+  // the user is active, never in fullscreen, never when mode is "still".
+  // TEMP: move constantly, no rails. Just proving the pet can walk.
+  // The roaming loop. All decisions live in RoamBrain; this just drives it
+  // and enforces the rails.
+  useEffect(() => {
+    const cfg = configFor(roamMode);
+    if (!cfg) {
+      brain.current = null;
+      setVel({ vx: 0, vy: 0 });
+      return; // "still" — no autonomy at all
+    }
+
+    brain.current = new RoamBrain(cfg);
+    let cancelled = false;
+
+    const step = async () => {
+      if (cancelled) return;
+      try {
+        const win = getCurrentWindow();
+        const pos = await win.outerPosition();
+        const size = await win.outerSize();
+        const mon = await currentMonitor();
+        if (!mon || !brain.current) {
+          roamRaf.current = requestAnimationFrame(step);
+          return;
+        }
+
+        const idleMs = await invoke<number>("cursor_idle_ms");
+        const blocked =
+          userControlling.current ||
+          fullscreenNow.current ||
+          idleMs < cfg.idleBeforeRoamMs;
+
+        const decision = brain.current.tick(
+          { x: pos.x, y: pos.y },
+          { x: mon.size.width, y: mon.size.height },
+          { x: size.width, y: size.height },
+          blocked,
+        );
+
+        if (decision.move && !decision.arrived) {
+          await win.setPosition(
+            new LogicalPosition(pos.x + decision.step.x, pos.y + decision.step.y),
+          );
+          setVel({ vx: decision.step.x * 4, vy: decision.step.y * 4 });
+        } else {
+          setVel({ vx: 0, vy: 0 });
+        }
+      } catch (err) {
+        console.error("roam step failed:", err);
+      }
+      roamRaf.current = requestAnimationFrame(step);
+    };
+
+    roamRaf.current = requestAnimationFrame(step);
+    return () => {
+      cancelled = true;
+      if (roamRaf.current) cancelAnimationFrame(roamRaf.current);
+      roamRaf.current = null;
+    };
+  }, [roamMode]);
+
   if (!species) return null;
 
-  // The active character. For "hardware", inject the live species params.
   const baseChar = getCharacter(activeCharId) ?? CHARACTERS[0];
   const activeChar =
     baseChar.id === "hardware" && species
@@ -225,11 +306,11 @@ function App() {
       {line && <SpeechBubble text={line} onDismiss={dismiss} />}
 
       <TrailEffect
-          vx={vel.vx}
-          vy={vel.vy}
-          color={species ? `hsl(${species.hue}, 90%, 65%)` : "#7ee081"}
-          enabled={trailOn}
-        />
+        vx={vel.vx}
+        vy={vel.vy}
+        color={species ? `hsl(${species.hue}, 90%, 65%)` : "#7ee081"}
+        enabled={trailOn}
+      />
 
       <div
         className={`creature-holder ${dizzy ? "dizzy" : ""}`}
