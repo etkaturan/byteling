@@ -31,6 +31,10 @@ static LAST_CURSOR_MOVE: AtomicU64 = AtomicU64::new(0);
 /// Last cursor position, packed, so we only stamp on actual movement.
 static LAST_CURSOR_KEY: AtomicU64 = AtomicU64::new(0);
 
+/// Interactive regions, in window-relative logical px, published by the
+/// frontend. It knows the pet's real bounds and any open UI; Rust cannot.
+static HIT_RECTS: Mutex<Vec<(f64, f64, f64, f64)>> = Mutex::new(Vec::new());
+
 /// Frontend fetches the creature's identity once at startup.
 #[tauri::command]
 fn get_species(state: tauri::State<AppState>) -> sim::Species {
@@ -55,6 +59,17 @@ fn get_specs(state: tauri::State<AppState>) -> MachineSpecs {
 #[tauri::command]
 fn get_pet_state(state: tauri::State<AppState>) -> Option<sim::PetState> {
     state.latest.lock().unwrap().clone()
+}
+
+
+/// The frontend publishes the regions that should catch the mouse — the pet's
+/// live bounds plus any open menu or bubble. Works for any pet shape and any
+/// UI, which a hardcoded region in Rust never could.
+#[tauri::command]
+fn set_hit_rects(rects: Vec<(f64, f64, f64, f64)>) {
+    if let Ok(mut guard) = HIT_RECTS.lock() {
+        *guard = rects;
+    }
 }
 
 /// How long since the cursor last moved. The honest "user is away" signal
@@ -258,27 +273,24 @@ pub fn run() {
                 }
             });
 
-            // Click-through management: the window ignores the mouse except
-            // when the cursor is over the creature's hit zone.
+            // Start interactive; the frontend immediately narrows this to the
+            // pet's real silhouette on the first mousemove.
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_ignore_cursor_events(true);
+                let _ = window.set_ignore_cursor_events(false);
             }
 
+            // Cursor idle tracking. Click-through is decided by the frontend
+            // (see set_interactive) — it can hit-test the pet's real
+            // silhouette, so a rectangle here would only steal clicks.
             let cursor_handle = app.handle().clone();
             std::thread::spawn(move || {
-                let mut interactive = false;
+                let mut interactive = true;
                 loop {
-                    std::thread::sleep(std::time::Duration::from_millis(120));
-                    let Some(window) = cursor_handle.get_webview_window("main") else {
-                        continue;
-                    };
+                    std::thread::sleep(std::time::Duration::from_millis(60));
                     let cursor = match cursor_handle.cursor_position() {
                         Ok(c) => c,
                         Err(_) => continue,
                     };
-
-                    // Track real cursor movement anywhere on screen — the
-                    // honest "user is active" signal for roaming.
                     let key = (((cursor.x as i64) << 32) ^ (cursor.y as i64)) as u64;
                     if LAST_CURSOR_KEY.swap(key, Ordering::Relaxed) != key {
                         let now = std::time::SystemTime::now()
@@ -288,23 +300,34 @@ pub fn run() {
                         LAST_CURSOR_MOVE.store(now, Ordering::Relaxed);
                     }
 
-                    let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size())
-                    else {
+                    // Coarse gate: while the cursor is inside the window's
+                    // bounds, let events through so the frontend can hit-test
+                    // the silhouette. Outside, go fully click-through.
+                    let Some(window) = cursor_handle.get_webview_window("main") else {
                         continue;
                     };
-
-                    // Hit zone: the region where the blob lives, as
-                    // fractions of the window (device-pixel safe).
-                    let w = size.width as f64;
-                    let h = size.height as f64;
-                    let x = cursor.x - pos.x as f64;
-                    let y = cursor.y - pos.y as f64;
-                    let inside =
-                        x > 0.12 * w && x < 0.88 * w && y > 0.42 * h && y < 1.0 * h;
-
-                    if inside != interactive {
-                        interactive = inside;
-                        let _ = window.set_ignore_cursor_events(!interactive);
+                    let Ok(pos) = window.outer_position() else {
+                        continue;
+                    };
+                    // Check the cursor against the regions the frontend
+                    // published. Everything else is click-through.
+                    let scale = window.scale_factor().unwrap_or(1.0);
+                    let rel_x = (cursor.x - pos.x as f64) / scale;
+                    let rel_y = (cursor.y - pos.y as f64) / scale;
+                    let hit = HIT_RECTS
+                        .lock()
+                        .map(|rects| {
+                            rects.iter().any(|(x, y, w, h)| {
+                                rel_x >= *x
+                                    && rel_x <= x + w
+                                    && rel_y >= *y
+                                    && rel_y <= y + h
+                            })
+                        })
+                        .unwrap_or(false);
+                    if hit != interactive {
+                        interactive = hit;
+                        let _ = window.set_ignore_cursor_events(!hit);
                     }
                 }
             });
@@ -378,7 +401,8 @@ pub fn run() {
             set_trail_enabled,
             get_roam_mode,
             set_roam_mode,
-            cursor_idle_ms
+            cursor_idle_ms,
+            set_hit_rects
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
