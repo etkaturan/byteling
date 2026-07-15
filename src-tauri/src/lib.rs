@@ -10,7 +10,7 @@ use tauri::{Emitter, Manager};
 use personality::{GroqProvider, SpeechContext, VoiceProvider};
 use std::fs;
 use std::path::PathBuf;
-use tauri_plugin_autostart::MacosLauncher;
+
 
 /// App-wide state available to commands.
 struct AppState {
@@ -74,11 +74,40 @@ async fn speak(app: tauri::AppHandle, ctx: SpeechContext) -> Option<String> {
     provider.speak(&ctx).await
 }
 
+
+#[tauri::command]
+fn get_active_character(app: tauri::AppHandle) -> String {
+    load_active_char(&app)
+}
+
+#[tauri::command]
+fn set_active_character(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    if let Some(path) = active_char_path(&app) {
+        fs::write(path, id.trim()).map_err(|e| e.to_string())?;
+    }
+    // Broadcast so the overlay updates live.
+    let _ = app.emit("active-character-changed", id);
+    Ok(())
+}
+
 /// Path to the file where the Groq key is stored (in the OS config dir).
 fn key_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     let dir = app.path().app_config_dir().ok()?;
     let _ = fs::create_dir_all(&dir);
     Some(dir.join("groq_key.txt"))
+}
+fn active_char_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let dir = app.path().app_config_dir().ok()?;
+    let _ = fs::create_dir_all(&dir);
+    Some(dir.join("active_character.txt"))
+}
+
+fn load_active_char(app: &tauri::AppHandle) -> String {
+    active_char_path(app)
+        .and_then(|p| fs::read_to_string(p).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "hardware".to_string())
 }
 
 fn load_key(app: &tauri::AppHandle) -> Option<String> {
@@ -264,7 +293,9 @@ pub fn run() {
             do_groom,
             set_groq_key,
             has_groq_key,
-            speak
+            speak,
+            get_active_character,
+            set_active_character
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

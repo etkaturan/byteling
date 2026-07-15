@@ -1,11 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import Creature, { Species, Mood } from "./Creature";
+import { Species, Mood } from "./Creature";
 import SpeechBubble from "./SpeechBubble";
 import { useChatter } from "./useChatter";
 import { recordSwitch, recentApps, isDizzy } from "./activityBrain";
+import PetView from "./pets/PetView";
+import { getCharacter, CHARACTERS } from "./pets/registry";
+import type { Action } from "./pets/types";
 import "./App.css";
 
 type Needs = {
@@ -36,6 +39,13 @@ function App() {
   const [groomPreview, setGroomPreview] = useState<GroomReport | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [activeCharId, setActiveCharId] = useState("hardware");
+  const [action] = useState<Action>("idle");
+  const [dizzy, setDizzy] = useState(false);
+  const [vel, setVel] = useState({ vx: 0, vy: 0 });
+
+  const dragRaf = useRef<number | null>(null);
+  const lastPos = useRef<{ x: number; y: number; t: number } | null>(null);
 
   const mood: Mood = pet?.mood ?? "Content";
   const creatureName = species
@@ -51,9 +61,37 @@ function App() {
     creature: creatureName,
     hint,
   });
-  const [dizzy, setDizzy] = useState(false);
 
   const lastClick = { current: 0 } as { current: number };
+
+  // While dragging, sample the window position each frame; the delta is the
+  // velocity we hand to the creature so it leans and its limbs trail.
+  const sampleVelocity = async () => {
+    try {
+      const win = getCurrentWindow();
+      const pos = await win.outerPosition();
+      const now = performance.now();
+      if (lastPos.current) {
+        const dt = Math.max(now - lastPos.current.t, 1);
+        const vx = ((pos.x - lastPos.current.x) / dt) * 16;
+        const vy = ((pos.y - lastPos.current.y) / dt) * 16;
+        setVel({ vx, vy });
+        console.log("vel", vx.toFixed(1), vy.toFixed(1));
+      }
+      lastPos.current = { x: pos.x, y: pos.y, t: now };
+    } catch {
+      /* window may be mid-move; ignore */
+    }
+    dragRaf.current = requestAnimationFrame(sampleVelocity);
+    
+  };
+
+  const stopSampling = () => {
+    if (dragRaf.current) cancelAnimationFrame(dragRaf.current);
+    dragRaf.current = null;
+    lastPos.current = null;
+    setVel({ vx: 0, vy: 0 });
+  };
 
   const startDrag = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("button")) return;
@@ -67,6 +105,16 @@ function App() {
       return;
     }
     lastClick.current = now;
+
+    // Start measuring motion; stop when the mouse is released anywhere.
+    lastPos.current = null;
+    if (!dragRaf.current) dragRaf.current = requestAnimationFrame(sampleVelocity);
+    const onUp = () => {
+      stopSampling();
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mouseup", onUp);
+
     getCurrentWindow().startDragging().catch(console.error);
   };
 
@@ -108,6 +156,11 @@ function App() {
     invoke<PetState | null>("get_pet_state").then((s) => {
       if (s) setPet(s);
     });
+    invoke<string>("get_active_character").then(setActiveCharId);
+
+    const unlistenChar = listen<string>("active-character-changed", (e) =>
+      setActiveCharId(e.payload),
+    );
 
     const unlistenPet = listen<PetState>("pet-state-changed", (e) =>
       setPet(e.payload),
@@ -130,11 +183,8 @@ function App() {
         return;
       }
 
-      if (fullscreen) return; // still stay quiet in fullscreen
-      // (removed the `activity === "Other"` skip so every named app reacts)
+      if (fullscreen) return;
 
-      // Settle ~1.5s in the app, then react — with its own 5s cooldown,
-      // bypassing the global chatter floor so app-changes reliably speak.
       if (activityTimer) window.clearTimeout(activityTimer);
       activityTimer = window.setTimeout(() => {
         const now = Date.now();
@@ -147,12 +197,21 @@ function App() {
     return () => {
       unlistenPet.then((f) => f());
       unlistenActivity.then((f) => f());
+      unlistenChar.then((f) => f());
       if (activityTimer) window.clearTimeout(activityTimer);
+      if (dragRaf.current) cancelAnimationFrame(dragRaf.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!species) return null;
+
+  // The active character. For "hardware", inject the live species params.
+  const baseChar = getCharacter(activeCharId) ?? CHARACTERS[0];
+  const activeChar =
+    baseChar.id === "hardware" && species
+      ? { ...baseChar, params: species }
+      : baseChar;
 
   return (
     <main className="stage" onMouseDown={startDrag}>
@@ -163,7 +222,17 @@ function App() {
         data-tauri-drag-region
         onContextMenu={onContext}
       >
-        <Creature species={species} mood={mood} size={150} />
+        <PetView
+          character={activeChar}
+          state={{
+            mood,
+            action,
+            facing: vel.vx < 0 ? "left" : "right",
+            size: 150,
+          }}
+          vx={vel.vx}
+          vy={vel.vy}
+        />
       </div>
 
       {showStats && pet && (
@@ -193,6 +262,18 @@ function App() {
           <button className="menu-item" onClick={() => setShowStats((v) => !v)}>
             {showStats ? "Hide stats" : "Show stats"}
           </button>
+          {CHARACTERS.map((c) => (
+            <button
+              key={c.id}
+              className="menu-item"
+              onClick={() => {
+                invoke("set_active_character", { id: c.id });
+                setMenuOpen(false);
+              }}
+            >
+              Become {c.name}
+            </button>
+          ))}
         </div>
       )}
 

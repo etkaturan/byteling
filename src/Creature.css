@@ -119,10 +119,10 @@
 }
 
 /* Critical: unstable flicker, like failing hardware. */
-.mood-critical {
+/* .mood-critical {
   animation: flicker 0.9s steps(2, end) infinite;
   filter: brightness(0.85) saturate(0.6);
-}
+} */
 @keyframes flicker {
   0%,
   100% {
