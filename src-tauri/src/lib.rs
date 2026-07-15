@@ -31,6 +31,10 @@ static LAST_CURSOR_MOVE: AtomicU64 = AtomicU64::new(0);
 /// Last cursor position, packed, so we only stamp on actual movement.
 static LAST_CURSOR_KEY: AtomicU64 = AtomicU64::new(0);
 
+/// Interactive regions, in window-relative logical px, published by the
+/// frontend. It knows the pet's real bounds and any open UI; Rust cannot.
+static HIT_RECTS: Mutex<Vec<(f64, f64, f64, f64)>> = Mutex::new(Vec::new());
+
 /// Frontend fetches the creature's identity once at startup.
 #[tauri::command]
 fn get_species(state: tauri::State<AppState>) -> sim::Species {
@@ -55,6 +59,17 @@ fn get_specs(state: tauri::State<AppState>) -> MachineSpecs {
 #[tauri::command]
 fn get_pet_state(state: tauri::State<AppState>) -> Option<sim::PetState> {
     state.latest.lock().unwrap().clone()
+}
+
+
+/// The frontend publishes the regions that should catch the mouse — the pet's
+/// live bounds plus any open menu or bubble. Works for any pet shape and any
+/// UI, which a hardcoded region in Rust never could.
+#[tauri::command]
+fn set_hit_rects(rects: Vec<(f64, f64, f64, f64)>) {
+    if let Ok(mut guard) = HIT_RECTS.lock() {
+        *guard = rects;
+    }
 }
 
 /// How long since the cursor last moved. The honest "user is away" signal
@@ -191,27 +206,143 @@ fn roam_path(app: &tauri::AppHandle) -> Option<PathBuf> {
 }
 
 /// Friendly display name for a known executable, else a cleaned-up fallback.
+/// Unknown apps get a readable name rather than a wrong one — the pet should
+/// never sound confidently mistaken about what you're using.
 fn pretty_app_name(exe: &str) -> String {
     let name = match exe {
-        "code.exe" | "cursor.exe" => "VS Code",
+        // Editors / dev
+        "code.exe" => "VS Code",
+        "cursor.exe" => "Cursor",
+        "devenv.exe" => "Visual Studio",
+        "rider64.exe" => "Rider",
+        "idea64.exe" => "IntelliJ",
+        "pycharm64.exe" => "PyCharm",
+        "webstorm64.exe" => "WebStorm",
+        "clion64.exe" => "CLion",
+        "rustrover64.exe" => "RustRover",
+        "goland64.exe" => "GoLand",
+        "sublime_text.exe" => "Sublime Text",
+        "notepad++.exe" => "Notepad++",
+        "atom.exe" => "Atom",
+        "windowsterminal.exe" | "wt.exe" => "Terminal",
+        "powershell.exe" | "pwsh.exe" => "PowerShell",
+        "cmd.exe" => "Command Prompt",
+        "git-bash.exe" | "mintty.exe" => "Git Bash",
+        "docker desktop.exe" => "Docker",
+        "postman.exe" => "Postman",
+        "insomnia.exe" => "Insomnia",
+        "datagrip64.exe" => "DataGrip",
+        "ssms.exe" => "SQL Server Management Studio",
+        "unity.exe" | "unityhub.exe" => "Unity",
+        "unrealeditor.exe" => "Unreal Engine",
+        "godot.exe" => "Godot",
+        "obsidian.exe" => "Obsidian",
+
+        // Browsers
         "chrome.exe" => "Chrome",
         "firefox.exe" => "Firefox",
         "msedge.exe" => "Edge",
-        "discord.exe" => "Discord",
-        "spotify.exe" => "Spotify",
-        "steam.exe" => "Steam",
-        "cs2.exe" => "Counter-Strike 2",
-        "explorer.exe" => "File Explorer",
+        "brave.exe" => "Brave",
+        "opera.exe" | "opera_gx.exe" => "Opera",
+        "vivaldi.exe" => "Vivaldi",
+        "arc.exe" => "Arc",
+        "zen.exe" => "Zen",
+        "tor.exe" | "firefox.exe.tor" => "Tor Browser",
+
+        // Chat / comms
+        "discord.exe" | "discordptb.exe" | "discordcanary.exe" => "Discord",
+        "slack.exe" => "Slack",
+        "teams.exe" | "ms-teams.exe" => "Teams",
+        "telegram.exe" => "Telegram",
+        "whatsapp.exe" => "WhatsApp",
+        "signal.exe" => "Signal",
+        "zoom.exe" => "Zoom",
+        "skype.exe" => "Skype",
+        "thunderbird.exe" => "Thunderbird",
+        "outlook.exe" => "Outlook",
         "claude.exe" => "Claude",
+
+        // Media
+        "spotify.exe" => "Spotify",
         "vlc.exe" => "VLC",
-        "devenv.exe" => "Visual Studio",
+        "mpc-hc64.exe" | "mpc-hc.exe" => "MPC-HC",
+        "mpv.exe" => "mpv",
+        "wmplayer.exe" => "Windows Media Player",
+        "itunes.exe" => "iTunes",
+        "audacity.exe" => "Audacity",
+        "obs64.exe" | "obs32.exe" => "OBS",
+
+        // Games / launchers
+        "steam.exe" | "steamwebhelper.exe" => "Steam",
+        "cs2.exe" => "Counter-Strike 2",
+        "dota2.exe" => "Dota 2",
+        "valorant.exe" | "valorant-win64-shipping.exe" => "Valorant",
+        "leagueclient.exe" | "league of legends.exe" => "League of Legends",
+        "riotclientux.exe" => "Riot Client",
+        "epicgameslauncher.exe" => "Epic Games",
+        "battle.net.exe" => "Battle.net",
+        "goggalaxy.exe" => "GOG Galaxy",
+        "eadesktop.exe" | "origin.exe" => "EA App",
+        "ubisoftconnect.exe" | "upc.exe" => "Ubisoft Connect",
+        "minecraft.exe" | "minecraftlauncher.exe" => "Minecraft",
+        "factorio.exe" => "Factorio",
+        "stardew valley.exe" => "Stardew Valley",
+        "rocketleague.exe" => "Rocket League",
+        "gta5.exe" => "GTA V",
+        "eldenring.exe" => "Elden Ring",
+
+        // Creative
+        "photoshop.exe" => "Photoshop",
+        "illustrator.exe" => "Illustrator",
+        "afterfx.exe" => "After Effects",
+        "premiere.exe" | "adobe premiere pro.exe" => "Premiere Pro",
+        "blender.exe" => "Blender",
+        "figma.exe" => "Figma",
+        "krita.exe" => "Krita",
+        "gimp-2.10.exe" | "gimp.exe" => "GIMP",
+        "inkscape.exe" => "Inkscape",
+        "aseprite.exe" => "Aseprite",
+        "davinci resolve.exe" | "resolve.exe" => "DaVinci Resolve",
+
+        // Office / system
+        "winword.exe" => "Word",
+        "excel.exe" => "Excel",
+        "powerpnt.exe" => "PowerPoint",
+        "onenote.exe" => "OneNote",
+        "acrobat.exe" | "acrord32.exe" => "Acrobat",
+        "notion.exe" => "Notion",
+        "explorer.exe" => "File Explorer",
+        "notepad.exe" => "Notepad",
+        "calc.exe" => "Calculator",
+        "taskmgr.exe" => "Task Manager",
+        "systemsettings.exe" => "Settings",
+        "7zfm.exe" => "7-Zip",
+        "winrar.exe" => "WinRAR",
+
         other => {
-            // Strip ".exe", capitalize first letter.
+            // Unknown: clean the exe name into something readable —
+            // "my_cool_app.exe" → "My Cool App".
             let base = other.strip_suffix(".exe").unwrap_or(other);
-            return base
-                .char_indices()
-                .map(|(i, c)| if i == 0 { c.to_ascii_uppercase() } else { c })
-                .collect();
+            let base = base.trim_end_matches(|c: char| c.is_ascii_digit());
+            let cleaned: String = base
+                .split(|c| c == '_' || c == '-' || c == '.')
+                .filter(|part| !part.is_empty())
+                .map(|part| {
+                    let mut chars = part.chars();
+                    match chars.next() {
+                        Some(first) => {
+                            first.to_uppercase().collect::<String>() + chars.as_str()
+                        }
+                        None => String::new(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            return if cleaned.is_empty() {
+                "something".to_string()
+            } else {
+                cleaned
+            };
         }
     };
     name.to_string()
@@ -258,27 +389,24 @@ pub fn run() {
                 }
             });
 
-            // Click-through management: the window ignores the mouse except
-            // when the cursor is over the creature's hit zone.
+            // Start interactive; the frontend immediately narrows this to the
+            // pet's real silhouette on the first mousemove.
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_ignore_cursor_events(true);
+                let _ = window.set_ignore_cursor_events(false);
             }
 
+            // Cursor idle tracking. Click-through is decided by the frontend
+            // (see set_interactive) — it can hit-test the pet's real
+            // silhouette, so a rectangle here would only steal clicks.
             let cursor_handle = app.handle().clone();
             std::thread::spawn(move || {
-                let mut interactive = false;
+                let mut interactive = true;
                 loop {
-                    std::thread::sleep(std::time::Duration::from_millis(120));
-                    let Some(window) = cursor_handle.get_webview_window("main") else {
-                        continue;
-                    };
+                    std::thread::sleep(std::time::Duration::from_millis(60));
                     let cursor = match cursor_handle.cursor_position() {
                         Ok(c) => c,
                         Err(_) => continue,
                     };
-
-                    // Track real cursor movement anywhere on screen — the
-                    // honest "user is active" signal for roaming.
                     let key = (((cursor.x as i64) << 32) ^ (cursor.y as i64)) as u64;
                     if LAST_CURSOR_KEY.swap(key, Ordering::Relaxed) != key {
                         let now = std::time::SystemTime::now()
@@ -288,45 +416,63 @@ pub fn run() {
                         LAST_CURSOR_MOVE.store(now, Ordering::Relaxed);
                     }
 
-                    let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size())
-                    else {
+                    // Coarse gate: while the cursor is inside the window's
+                    // bounds, let events through so the frontend can hit-test
+                    // the silhouette. Outside, go fully click-through.
+                    let Some(window) = cursor_handle.get_webview_window("main") else {
                         continue;
                     };
-
-                    // Hit zone: the region where the blob lives, as
-                    // fractions of the window (device-pixel safe).
-                    let w = size.width as f64;
-                    let h = size.height as f64;
-                    let x = cursor.x - pos.x as f64;
-                    let y = cursor.y - pos.y as f64;
-                    let inside =
-                        x > 0.12 * w && x < 0.88 * w && y > 0.42 * h && y < 1.0 * h;
-
-                    if inside != interactive {
-                        interactive = inside;
-                        let _ = window.set_ignore_cursor_events(!interactive);
+                    let Ok(pos) = window.outer_position() else {
+                        continue;
+                    };
+                    // Check the cursor against the regions the frontend
+                    // published. Everything else is click-through.
+                    let scale = window.scale_factor().unwrap_or(1.0);
+                    let rel_x = (cursor.x - pos.x as f64) / scale;
+                    let rel_y = (cursor.y - pos.y as f64) / scale;
+                    let hit = HIT_RECTS
+                        .lock()
+                        .map(|rects| {
+                            rects.iter().any(|(x, y, w, h)| {
+                                rel_x >= *x
+                                    && rel_x <= x + w
+                                    && rel_y >= *y
+                                    && rel_y <= y + h
+                            })
+                        })
+                        .unwrap_or(false);
+                    if hit != interactive {
+                        interactive = hit;
+                        let _ = window.set_ignore_cursor_events(!hit);
                     }
                 }
             });
 
-            // Foreground-app awareness: emit when the focused activity changes.
+            // Foreground-app awareness. Windows notifies us the instant focus
+            // changes — no polling tick, so reactions are immediate and the
+            // app idles at zero cost. We emit on every focus change (not just
+            // category changes) so the pet can name the specific app.
             let fg_handle = app.handle().clone();
             std::thread::spawn(move || {
-                let mut last: Option<sensors::Activity> = None;
-                loop {
-                    std::thread::sleep(std::time::Duration::from_secs(2));
+                let last_exe = Mutex::new(String::new());
+                sensors::watch_foreground(Box::new(move || {
                     if let Some((exe, activity, fullscreen)) = sensors::foreground() {
-                        if Some(activity) != last {
-                            last = Some(activity);
-                            let payload = serde_json::json!({
-                                "app": pretty_app_name(&exe),
-                                "activity": activity,
-                                "fullscreen": fullscreen,
-                            });
-                            let _ = fg_handle.emit("activity-changed", payload);
+                        let mut guard = match last_exe.lock() {
+                            Ok(g) => g,
+                            Err(_) => return,
+                        };
+                        if *guard == exe {
+                            return; // same app regaining focus; ignore
                         }
+                        *guard = exe.clone();
+                        let payload = serde_json::json!({
+                            "app": pretty_app_name(&exe),
+                            "activity": activity,
+                            "fullscreen": fullscreen,
+                        });
+                        let _ = fg_handle.emit("activity-changed", payload);
                     }
-                }
+                }));
             });
 
             let clinic =
@@ -378,7 +524,8 @@ pub fn run() {
             set_trail_enabled,
             get_roam_mode,
             set_roam_mode,
-            cursor_idle_ms
+            cursor_idle_ms,
+            set_hit_rects
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -34,8 +34,9 @@ impl GroqProvider {
         format!(
             "You are Byteling, a small desktop creature that IS the user's computer, made visible. \
              You are a {creature}. Mood: {mood} (sweet and warm when good; dry and a little snarky \
-             when bad, never mean). Reply in ONE short line under 18 words. No quotes. At most one emoji. \
-             Never say you're an AI. Local hour: {hour} (24h). System note: {hint}.{recent}{dizzy}",
+             when bad, never mean). Answer immediately with one short line — no deliberation. \
+             Keep it brief and never mention being an AI. Local hour: {hour} (24h). \
+             System note: {hint}.{recent}{dizzy}",
             creature = ctx.creature,
             mood = ctx.mood,
             hour = ctx.hour,
@@ -66,7 +67,7 @@ impl VoiceProvider for GroqProvider {
     async fn speak(&self, ctx: &SpeechContext) -> Option<String> {
         let body = serde_json::json!({
             "model": MODEL,
-            "max_completion_tokens": 512,
+            "max_completion_tokens": 1024,
             "temperature": 0.9,
             "messages": [
                 { "role": "system", "content": Self::system_prompt(ctx) },

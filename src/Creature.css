@@ -24,6 +24,7 @@
   transform-box: fill-box;
   transform-origin: center;
   animation: aura-pulse 3s ease-in-out infinite;
+  pointer-events: none;
 }
 @keyframes aura-pulse {
   0%,

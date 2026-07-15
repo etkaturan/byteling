@@ -59,6 +59,7 @@ function App() {
 
   const dragRaf = useRef<number | null>(null);
   const lastPos = useRef<{ x: number; y: number; t: number } | null>(null);
+  const interactiveNow = useRef(false);
 
   const mood: Mood = pet?.mood ?? "Content";
   const creatureName = species
@@ -108,6 +109,9 @@ function App() {
     if ((e.target as HTMLElement).closest("button")) return;
     if ((e.target as HTMLElement).closest(".pet-menu")) return;
     if (e.button !== 0) return;
+    // Only drag from real pet pixels — not the transparent window area.
+    const t = e.target as Element;
+    if (!(t instanceof SVGElement) || t.tagName.toLowerCase() === "svg") return;
 
     // Rail: the user always wins — abandon the wander plan instantly.
     userControlling.current = true;
@@ -217,10 +221,58 @@ function App() {
         say("activity", true, { app, recent_apps: recentApps() });
       }, 1500);
     });
+    
+
+    // Publish the regions that should catch the mouse: the pet's real drawn
+    // bounds (getBBox follows the art, whatever pet it is) plus any open UI.
+    // Rust checks the cursor against these — everything else is click-through.
+    const publishHitRects = () => {
+      const rects: [number, number, number, number][] = [];
+
+      const svg = document.querySelector(
+        ".creature-holder svg",
+      ) as SVGSVGElement | null;
+      if (svg) {
+        // getBBox is the ink's bounds in the SVG's own units; map it back to
+        // page px via the rendered rect so it works at any size/scale.
+        try {
+          const bb = svg.getBBox();
+          const r = svg.getBoundingClientRect();
+          const vb = svg.viewBox.baseVal;
+          if (vb && vb.width > 0 && vb.height > 0) {
+            const sx = r.width / vb.width;
+            const sy = r.height / vb.height;
+            rects.push([
+              r.left + (bb.x - vb.x) * sx,
+              r.top + (bb.y - vb.y) * sy,
+              bb.width * sx,
+              bb.height * sy,
+            ]);
+          } else {
+            rects.push([r.left, r.top, r.width, r.height]);
+          }
+        } catch {
+          const r = svg.getBoundingClientRect();
+          rects.push([r.left, r.top, r.width, r.height]);
+        }
+      }
+
+      for (const sel of [".pet-menu", ".confirm", ".bubble"]) {
+        const el = document.querySelector(sel);
+        if (el) {
+          const r = el.getBoundingClientRect();
+          rects.push([r.left, r.top, r.width, r.height]);
+        }
+      }
+
+      invoke("set_hit_rects", { rects }).catch(() => {});
+    };
+
+    publishHitRects();
+    const rectTimer = window.setInterval(publishHitRects, 250);
 
     return () => {
-      unlistenPet.then((f) => f());
-      unlistenActivity.then((f) => f());
+      window.clearInterval(rectTimer);
       unlistenChar.then((f) => f());
       unlistenTrail.then((f) => f());
       unlistenRoam.then((f) => f());
@@ -314,7 +366,6 @@ function App() {
 
       <div
         className={`creature-holder ${dizzy ? "dizzy" : ""}`}
-        data-tauri-drag-region
         onContextMenu={onContext}
       >
         <PetView
