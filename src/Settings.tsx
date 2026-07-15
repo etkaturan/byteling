@@ -7,11 +7,20 @@ function Settings() {
   const [keyInput, setKeyInput] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [autostart, setAutostart] = useState(false);
+  const [trailOn, setTrailOn] = useState(true);
 
   useEffect(() => {
-    invoke<boolean>("has_groq_key").then(setHasKey);
+    invoke<boolean>("get_trail_enabled").then(setTrailOn);
     isEnabled().then(setAutostart).catch(() => {});
   }, []);
+
+
+
+  const toggleTrail = async () => {
+    const next = !trailOn;
+    await invoke("set_trail_enabled", { enabled: next });
+    setTrailOn(next);
+  };
 
   const saveKey = async () => {
     try {
@@ -88,6 +97,16 @@ function Settings() {
         machine and never leaves it except to call Groq.
       </p>
 
+      <div style={{ marginTop: 16, borderTop: "1px solid #232733", paddingTop: 14 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, cursor: "pointer" }}>
+          <input type="checkbox" checked={trailOn} onChange={toggleTrail} />
+          Glowing trail when moving
+        </label>
+        <p style={{ fontSize: 11, color: "#626878", marginTop: 6 }}>
+          Your Byteling leaves a fading trail of light as it moves.
+        </p>
+      </div>
+      
       <div style={{ marginTop: 16, borderTop: "1px solid #232733", paddingTop: 14 }}>
         <label
           style={{

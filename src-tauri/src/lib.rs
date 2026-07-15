@@ -90,6 +90,25 @@ fn set_active_character(app: tauri::AppHandle, id: String) -> Result<(), String>
     Ok(())
 }
 
+
+#[tauri::command]
+fn get_trail_enabled(app: tauri::AppHandle) -> bool {
+    trail_path(&app)
+        .and_then(|p| fs::read_to_string(p).ok())
+        .map(|s| s.trim() == "1")
+        .unwrap_or(true) // trails on by default
+}
+
+#[tauri::command]
+fn set_trail_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    if let Some(path) = trail_path(&app) {
+        fs::write(path, if enabled { "1" } else { "0" }).map_err(|e| e.to_string())?;
+    }
+    let _ = app.emit("trail-enabled-changed", enabled);
+    Ok(())
+}
+
+
 /// Path to the file where the Groq key is stored (in the OS config dir).
 fn key_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     let dir = app.path().app_config_dir().ok()?;
@@ -118,6 +137,12 @@ fn load_key(app: &tauri::AppHandle) -> Option<String> {
     } else {
         Some(key)
     }
+}
+
+fn trail_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let dir = app.path().app_config_dir().ok()?;
+    let _ = fs::create_dir_all(&dir);
+    Some(dir.join("trail_enabled.txt"))
 }
 
 
