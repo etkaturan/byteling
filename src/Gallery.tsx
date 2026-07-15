@@ -1,52 +1,85 @@
-import Creature, { Species, Mood } from "./Creature";
+import { useState } from "react";
+import PetView from "./pets/PetView";
+import { CHARACTERS } from "./pets/registry";
+import type { Action, Mood } from "./pets/types";
 
-// A spread of creatures to eyeball all axes and moods at once.
-const SAMPLES: { species: Species; mood: Mood; label: string }[] = [
-  {
-    label: "Grounded · Hatchling · Slight",
-    mood: "Thriving",
-    species: { family: "Grounded", life_stage: "Hatchling", build: "Slight", hue: 200, limbs: 2, markings: 1, liveliness: 1.1 },
-  },
-  {
-    label: "Grounded · Elder · Sturdy (yours)",
-    mood: "Unwell",
-    species: { family: "Grounded", life_stage: "Elder", build: "Sturdy", hue: 15, limbs: 6, markings: 1, liveliness: 1.02 },
-  },
-  {
-    label: "Aerial · Adult · Mighty",
-    mood: "Content",
-    species: { family: "Aerial", life_stage: "Adult", build: "Mighty", hue: 280, limbs: 4, markings: 3, liveliness: 1.0 },
-  },
-  {
-    label: "Aerial · Hatchling · Slight",
-    mood: "Critical",
-    species: { family: "Aerial", life_stage: "Hatchling", build: "Slight", hue: 130, limbs: 2, markings: 2, liveliness: 1.14 },
-  },
-];
+const MOODS: Mood[] = ["Thriving", "Content", "Uneasy", "Unwell", "Critical"];
+const ACTIONS: Action[] = ["idle", "moving", "sleeping"];
 
 function Gallery() {
+  const [mood, setMood] = useState<Mood>("Content");
+  const [action, setAction] = useState<Action>("idle");
+
   return (
     <div
       style={{
         background: "#0f1117",
         minHeight: "100vh",
-        display: "grid",
-        gridTemplateColumns: "1fr 1fr",
-        gap: 20,
-        padding: 30,
-        placeItems: "center",
+        padding: 24,
+        color: "#e6e8ee",
+        fontFamily: "system-ui, sans-serif",
       }}
     >
-      {SAMPLES.map((s) => (
-        <div key={s.label} style={{ textAlign: "center", color: "#e6e8ee" }}>
-          <Creature species={s.species} mood={s.mood} size={150} />
-          <div style={{ fontFamily: "system-ui", fontSize: 12, marginTop: 6 }}>
-            {s.label}
-            <br />
-            <span style={{ opacity: 0.6 }}>{s.mood}</span>
+      <h2 style={{ fontSize: 16, marginTop: 0 }}>Pet renderer preview</h2>
+
+      <div style={{ display: "flex", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+        {MOODS.map((m) => (
+          <button
+            key={m}
+            onClick={() => setMood(m)}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 8,
+              border: "none",
+              cursor: "pointer",
+              background: mood === m ? "#4a7dff" : "#232733",
+              color: "#fff",
+              fontSize: 12,
+            }}
+          >
+            {m}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+        {ACTIONS.map((a) => (
+          <button
+            key={a}
+            onClick={() => setAction(a)}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 8,
+              border: "none",
+              cursor: "pointer",
+              background: action === a ? "#7ee081" : "#232733",
+              color: action === a ? "#10131a" : "#fff",
+              fontSize: 12,
+            }}
+          >
+            {a}
+          </button>
+        ))}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 20,
+          placeItems: "center",
+        }}
+      >
+        {CHARACTERS.map((char) => (
+          <div key={char.id} style={{ textAlign: "center" }}>
+            <PetView
+              character={char}
+              state={{ mood, action, facing: "right", size: 150 }}
+            />
+            <div style={{ fontSize: 13, marginTop: 8 }}>{char.name}</div>
+            <div style={{ fontSize: 11, color: "#9aa0ad" }}>{char.bio}</div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }

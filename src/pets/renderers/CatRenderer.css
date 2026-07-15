@@ -1,0 +1,47 @@
+.svgcat {
+  display: block;
+  overflow: visible;
+}
+
+.svgcat-idle {
+  animation: svgcat-breathe 4s ease-in-out infinite;
+  transform-origin: 39px 40px;
+  transform-box: view-box;
+}
+@keyframes svgcat-breathe {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.01, 0.99); }
+}
+
+.svgcat-idle .sc-lpupil,
+.svgcat-idle .sc-rpupil {
+  animation: svgcat-blink 4.5s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes svgcat-blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  94%, 96% { transform: scaleY(0.1); }
+}
+
+.svgcat-idle .sc-leye,
+.svgcat-idle .sc-reye {
+  animation: svgcat-blink2 4.5s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes svgcat-blink2 {
+  0%, 89%, 100% { transform: scaleY(1); }
+  94%, 96% { transform: scaleY(0.55); }
+}
+
+.svgcat-idle .sc-tail {
+  animation: svgcat-tail 5s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: top center;
+}
+@keyframes svgcat-tail {
+  0%, 60%, 100% { transform: rotate(0deg); }
+  75% { transform: rotate(-4deg); }
+  88% { transform: rotate(3deg); }
+}
