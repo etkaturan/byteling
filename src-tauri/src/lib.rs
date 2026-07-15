@@ -4,13 +4,13 @@ mod care;
 mod personality;
 
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
 use personality::{GroqProvider, SpeechContext, VoiceProvider};
 use std::fs;
 use std::path::PathBuf;
-
 
 /// App-wide state available to commands.
 struct AppState {
@@ -25,6 +25,11 @@ struct MachineSpecs {
     ram_gib: u64,
     gpu: Option<String>,
 }
+
+/// Wall-clock millis of the last real cursor movement anywhere on screen.
+static LAST_CURSOR_MOVE: AtomicU64 = AtomicU64::new(0);
+/// Last cursor position, packed, so we only stamp on actual movement.
+static LAST_CURSOR_KEY: AtomicU64 = AtomicU64::new(0);
 
 /// Frontend fetches the creature's identity once at startup.
 #[tauri::command]
@@ -52,6 +57,23 @@ fn get_pet_state(state: tauri::State<AppState>) -> Option<sim::PetState> {
     state.latest.lock().unwrap().clone()
 }
 
+/// How long since the cursor last moved. The honest "user is away" signal
+/// for roaming — the overlay's own mouse events lie, since the transparent
+/// window sees the cursor pass over it while you work elsewhere.
+#[tauri::command]
+fn cursor_idle_ms() -> u64 {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let last = LAST_CURSOR_MOVE.load(Ordering::Relaxed);
+    if last == 0 {
+        0
+    } else {
+        now.saturating_sub(last)
+    }
+}
+
 /// Save (or clear) the user's Groq API key.
 #[tauri::command]
 fn set_groq_key(app: tauri::AppHandle, key: String) -> Result<(), String> {
@@ -74,7 +96,6 @@ async fn speak(app: tauri::AppHandle, ctx: SpeechContext) -> Option<String> {
     provider.speak(&ctx).await
 }
 
-
 #[tauri::command]
 fn get_active_character(app: tauri::AppHandle) -> String {
     load_active_char(&app)
@@ -89,7 +110,6 @@ fn set_active_character(app: tauri::AppHandle, id: String) -> Result<(), String>
     let _ = app.emit("active-character-changed", id);
     Ok(())
 }
-
 
 #[tauri::command]
 fn get_trail_enabled(app: tauri::AppHandle) -> bool {
@@ -108,6 +128,24 @@ fn set_trail_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), String>
     Ok(())
 }
 
+/// "still" | "calm" | "playful". Default: still — users opt IN to movement.
+#[tauri::command]
+fn get_roam_mode(app: tauri::AppHandle) -> String {
+    roam_path(&app)
+        .and_then(|p| fs::read_to_string(p).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| matches!(s.as_str(), "still" | "calm" | "playful"))
+        .unwrap_or_else(|| "still".to_string())
+}
+
+#[tauri::command]
+fn set_roam_mode(app: tauri::AppHandle, mode: String) -> Result<(), String> {
+    if let Some(path) = roam_path(&app) {
+        fs::write(path, mode.trim()).map_err(|e| e.to_string())?;
+    }
+    let _ = app.emit("roam-mode-changed", mode);
+    Ok(())
+}
 
 /// Path to the file where the Groq key is stored (in the OS config dir).
 fn key_path(app: &tauri::AppHandle) -> Option<PathBuf> {
@@ -115,6 +153,7 @@ fn key_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     let _ = fs::create_dir_all(&dir);
     Some(dir.join("groq_key.txt"))
 }
+
 fn active_char_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     let dir = app.path().app_config_dir().ok()?;
     let _ = fs::create_dir_all(&dir);
@@ -145,6 +184,11 @@ fn trail_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     Some(dir.join("trail_enabled.txt"))
 }
 
+fn roam_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let dir = app.path().app_config_dir().ok()?;
+    let _ = fs::create_dir_all(&dir);
+    Some(dir.join("roam_mode.txt"))
+}
 
 /// Friendly display name for a known executable, else a cleaned-up fallback.
 fn pretty_app_name(exe: &str) -> String {
@@ -172,7 +216,6 @@ fn pretty_app_name(exe: &str) -> String {
     };
     name.to_string()
 }
-
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -233,6 +276,18 @@ pub fn run() {
                         Ok(c) => c,
                         Err(_) => continue,
                     };
+
+                    // Track real cursor movement anywhere on screen — the
+                    // honest "user is active" signal for roaming.
+                    let key = (((cursor.x as i64) << 32) ^ (cursor.y as i64)) as u64;
+                    if LAST_CURSOR_KEY.swap(key, Ordering::Relaxed) != key {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis() as u64)
+                            .unwrap_or(0);
+                        LAST_CURSOR_MOVE.store(now, Ordering::Relaxed);
+                    }
+
                     let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size())
                     else {
                         continue;
@@ -270,8 +325,6 @@ pub fn run() {
                             });
                             let _ = fg_handle.emit("activity-changed", payload);
                         }
-                    } else {
-                        println!("fg: no foreground detected");
                     }
                 }
             });
@@ -320,7 +373,12 @@ pub fn run() {
             has_groq_key,
             speak,
             get_active_character,
-            set_active_character
+            set_active_character,
+            get_trail_enabled,
+            set_trail_enabled,
+            get_roam_mode,
+            set_roam_mode,
+            cursor_idle_ms
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

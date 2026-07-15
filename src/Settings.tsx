@@ -8,13 +8,19 @@ function Settings() {
   const [status, setStatus] = useState<string | null>(null);
   const [autostart, setAutostart] = useState(false);
   const [trailOn, setTrailOn] = useState(true);
+  const [roamMode, setRoamMode] = useState("still");
 
   useEffect(() => {
+    invoke<boolean>("has_groq_key").then(setHasKey);
     invoke<boolean>("get_trail_enabled").then(setTrailOn);
+    invoke<string>("get_roam_mode").then(setRoamMode);
     isEnabled().then(setAutostart).catch(() => {});
   }, []);
 
-
+  const chooseRoam = async (mode: string) => {
+    await invoke("set_roam_mode", { mode });
+    setRoamMode(mode);
+  };
 
   const toggleTrail = async () => {
     const next = !trailOn;
@@ -98,6 +104,29 @@ function Settings() {
       </p>
 
       <div style={{ marginTop: 16, borderTop: "1px solid #232733", paddingTop: 14 }}>
+        <div style={{ fontSize: 14, marginBottom: 8 }}>Wandering</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {[
+            { id: "still", label: "Still" },
+            { id: "calm", label: "Calm" },
+            { id: "playful", label: "Playful" },
+          ].map((m) => (
+            <button
+              key={m.id}
+              className={`settings-btn ${roamMode === m.id ? "" : "ghost"}`}
+              onClick={() => chooseRoam(m.id)}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <p style={{ fontSize: 11, color: "#626878", marginTop: 8 }}>
+          Your Byteling only wanders when you're away from the keyboard, sticks
+          to the screen edges, and always stops the moment you grab it.
+        </p>
+      </div>
+
+      <div style={{ marginTop: 16, borderTop: "1px solid #232733", paddingTop: 14 }}>
         <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, cursor: "pointer" }}>
           <input type="checkbox" checked={trailOn} onChange={toggleTrail} />
           Glowing trail when moving
@@ -106,7 +135,7 @@ function Settings() {
           Your Byteling leaves a fading trail of light as it moves.
         </p>
       </div>
-      
+
       <div style={{ marginTop: 16, borderTop: "1px solid #232733", paddingTop: 14 }}>
         <label
           style={{
@@ -117,11 +146,7 @@ function Settings() {
             cursor: "pointer",
           }}
         >
-          <input
-            type="checkbox"
-            checked={autostart}
-            onChange={toggleAutostart}
-          />
+          <input type="checkbox" checked={autostart} onChange={toggleAutostart} />
           Launch Byteling when the computer starts
         </label>
         <p style={{ fontSize: 11, color: "#626878", marginTop: 6 }}>

@@ -9,7 +9,8 @@ import "./App.css";
 
 // Each window renders a different page, decided by its Tauri label.
 const label = getCurrentWindow().label;
-const Page = label === "clinic" ? Gallery : App;
+const Page = label === "clinic" ? Clinic : App;
+
 
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
