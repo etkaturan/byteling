@@ -10,7 +10,7 @@ mod foreground;
 
 pub use gpu::GpuPoller;
 pub use system::SystemPoller;
-pub use foreground::{foreground, Activity};
+pub use foreground::{foreground, watch_foreground};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SystemSnapshot {

@@ -206,27 +206,143 @@ fn roam_path(app: &tauri::AppHandle) -> Option<PathBuf> {
 }
 
 /// Friendly display name for a known executable, else a cleaned-up fallback.
+/// Unknown apps get a readable name rather than a wrong one — the pet should
+/// never sound confidently mistaken about what you're using.
 fn pretty_app_name(exe: &str) -> String {
     let name = match exe {
-        "code.exe" | "cursor.exe" => "VS Code",
+        // Editors / dev
+        "code.exe" => "VS Code",
+        "cursor.exe" => "Cursor",
+        "devenv.exe" => "Visual Studio",
+        "rider64.exe" => "Rider",
+        "idea64.exe" => "IntelliJ",
+        "pycharm64.exe" => "PyCharm",
+        "webstorm64.exe" => "WebStorm",
+        "clion64.exe" => "CLion",
+        "rustrover64.exe" => "RustRover",
+        "goland64.exe" => "GoLand",
+        "sublime_text.exe" => "Sublime Text",
+        "notepad++.exe" => "Notepad++",
+        "atom.exe" => "Atom",
+        "windowsterminal.exe" | "wt.exe" => "Terminal",
+        "powershell.exe" | "pwsh.exe" => "PowerShell",
+        "cmd.exe" => "Command Prompt",
+        "git-bash.exe" | "mintty.exe" => "Git Bash",
+        "docker desktop.exe" => "Docker",
+        "postman.exe" => "Postman",
+        "insomnia.exe" => "Insomnia",
+        "datagrip64.exe" => "DataGrip",
+        "ssms.exe" => "SQL Server Management Studio",
+        "unity.exe" | "unityhub.exe" => "Unity",
+        "unrealeditor.exe" => "Unreal Engine",
+        "godot.exe" => "Godot",
+        "obsidian.exe" => "Obsidian",
+
+        // Browsers
         "chrome.exe" => "Chrome",
         "firefox.exe" => "Firefox",
         "msedge.exe" => "Edge",
-        "discord.exe" => "Discord",
-        "spotify.exe" => "Spotify",
-        "steam.exe" => "Steam",
-        "cs2.exe" => "Counter-Strike 2",
-        "explorer.exe" => "File Explorer",
+        "brave.exe" => "Brave",
+        "opera.exe" | "opera_gx.exe" => "Opera",
+        "vivaldi.exe" => "Vivaldi",
+        "arc.exe" => "Arc",
+        "zen.exe" => "Zen",
+        "tor.exe" | "firefox.exe.tor" => "Tor Browser",
+
+        // Chat / comms
+        "discord.exe" | "discordptb.exe" | "discordcanary.exe" => "Discord",
+        "slack.exe" => "Slack",
+        "teams.exe" | "ms-teams.exe" => "Teams",
+        "telegram.exe" => "Telegram",
+        "whatsapp.exe" => "WhatsApp",
+        "signal.exe" => "Signal",
+        "zoom.exe" => "Zoom",
+        "skype.exe" => "Skype",
+        "thunderbird.exe" => "Thunderbird",
+        "outlook.exe" => "Outlook",
         "claude.exe" => "Claude",
+
+        // Media
+        "spotify.exe" => "Spotify",
         "vlc.exe" => "VLC",
-        "devenv.exe" => "Visual Studio",
+        "mpc-hc64.exe" | "mpc-hc.exe" => "MPC-HC",
+        "mpv.exe" => "mpv",
+        "wmplayer.exe" => "Windows Media Player",
+        "itunes.exe" => "iTunes",
+        "audacity.exe" => "Audacity",
+        "obs64.exe" | "obs32.exe" => "OBS",
+
+        // Games / launchers
+        "steam.exe" | "steamwebhelper.exe" => "Steam",
+        "cs2.exe" => "Counter-Strike 2",
+        "dota2.exe" => "Dota 2",
+        "valorant.exe" | "valorant-win64-shipping.exe" => "Valorant",
+        "leagueclient.exe" | "league of legends.exe" => "League of Legends",
+        "riotclientux.exe" => "Riot Client",
+        "epicgameslauncher.exe" => "Epic Games",
+        "battle.net.exe" => "Battle.net",
+        "goggalaxy.exe" => "GOG Galaxy",
+        "eadesktop.exe" | "origin.exe" => "EA App",
+        "ubisoftconnect.exe" | "upc.exe" => "Ubisoft Connect",
+        "minecraft.exe" | "minecraftlauncher.exe" => "Minecraft",
+        "factorio.exe" => "Factorio",
+        "stardew valley.exe" => "Stardew Valley",
+        "rocketleague.exe" => "Rocket League",
+        "gta5.exe" => "GTA V",
+        "eldenring.exe" => "Elden Ring",
+
+        // Creative
+        "photoshop.exe" => "Photoshop",
+        "illustrator.exe" => "Illustrator",
+        "afterfx.exe" => "After Effects",
+        "premiere.exe" | "adobe premiere pro.exe" => "Premiere Pro",
+        "blender.exe" => "Blender",
+        "figma.exe" => "Figma",
+        "krita.exe" => "Krita",
+        "gimp-2.10.exe" | "gimp.exe" => "GIMP",
+        "inkscape.exe" => "Inkscape",
+        "aseprite.exe" => "Aseprite",
+        "davinci resolve.exe" | "resolve.exe" => "DaVinci Resolve",
+
+        // Office / system
+        "winword.exe" => "Word",
+        "excel.exe" => "Excel",
+        "powerpnt.exe" => "PowerPoint",
+        "onenote.exe" => "OneNote",
+        "acrobat.exe" | "acrord32.exe" => "Acrobat",
+        "notion.exe" => "Notion",
+        "explorer.exe" => "File Explorer",
+        "notepad.exe" => "Notepad",
+        "calc.exe" => "Calculator",
+        "taskmgr.exe" => "Task Manager",
+        "systemsettings.exe" => "Settings",
+        "7zfm.exe" => "7-Zip",
+        "winrar.exe" => "WinRAR",
+
         other => {
-            // Strip ".exe", capitalize first letter.
+            // Unknown: clean the exe name into something readable —
+            // "my_cool_app.exe" → "My Cool App".
             let base = other.strip_suffix(".exe").unwrap_or(other);
-            return base
-                .char_indices()
-                .map(|(i, c)| if i == 0 { c.to_ascii_uppercase() } else { c })
-                .collect();
+            let base = base.trim_end_matches(|c: char| c.is_ascii_digit());
+            let cleaned: String = base
+                .split(|c| c == '_' || c == '-' || c == '.')
+                .filter(|part| !part.is_empty())
+                .map(|part| {
+                    let mut chars = part.chars();
+                    match chars.next() {
+                        Some(first) => {
+                            first.to_uppercase().collect::<String>() + chars.as_str()
+                        }
+                        None => String::new(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            return if cleaned.is_empty() {
+                "something".to_string()
+            } else {
+                cleaned
+            };
         }
     };
     name.to_string()
@@ -332,24 +448,31 @@ pub fn run() {
                 }
             });
 
-            // Foreground-app awareness: emit when the focused activity changes.
+            // Foreground-app awareness. Windows notifies us the instant focus
+            // changes — no polling tick, so reactions are immediate and the
+            // app idles at zero cost. We emit on every focus change (not just
+            // category changes) so the pet can name the specific app.
             let fg_handle = app.handle().clone();
             std::thread::spawn(move || {
-                let mut last: Option<sensors::Activity> = None;
-                loop {
-                    std::thread::sleep(std::time::Duration::from_secs(2));
+                let last_exe = Mutex::new(String::new());
+                sensors::watch_foreground(Box::new(move || {
                     if let Some((exe, activity, fullscreen)) = sensors::foreground() {
-                        if Some(activity) != last {
-                            last = Some(activity);
-                            let payload = serde_json::json!({
-                                "app": pretty_app_name(&exe),
-                                "activity": activity,
-                                "fullscreen": fullscreen,
-                            });
-                            let _ = fg_handle.emit("activity-changed", payload);
+                        let mut guard = match last_exe.lock() {
+                            Ok(g) => g,
+                            Err(_) => return,
+                        };
+                        if *guard == exe {
+                            return; // same app regaining focus; ignore
                         }
+                        *guard = exe.clone();
+                        let payload = serde_json::json!({
+                            "app": pretty_app_name(&exe),
+                            "activity": activity,
+                            "fullscreen": fullscreen,
+                        });
+                        let _ = fg_handle.emit("activity-changed", payload);
                     }
-                }
+                }));
             });
 
             let clinic =
