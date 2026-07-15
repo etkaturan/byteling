@@ -9,6 +9,7 @@ import { recordSwitch, recentApps, isDizzy } from "./activityBrain";
 import PetView from "./pets/PetView";
 import { getCharacter, CHARACTERS } from "./pets/registry";
 import type { Action } from "./pets/types";
+import TrailEffect from "./effects/TrailEffect";
 import "./App.css";
 
 type Needs = {
@@ -43,6 +44,7 @@ function App() {
   const [action] = useState<Action>("idle");
   const [dizzy, setDizzy] = useState(false);
   const [vel, setVel] = useState({ vx: 0, vy: 0 });
+  const [trailOn, setTrailOn] = useState(true);
 
   const dragRaf = useRef<number | null>(null);
   const lastPos = useRef<{ x: number; y: number; t: number } | null>(null);
@@ -157,13 +159,18 @@ function App() {
       if (s) setPet(s);
     });
     invoke<string>("get_active_character").then(setActiveCharId);
-
+    
     const unlistenChar = listen<string>("active-character-changed", (e) =>
       setActiveCharId(e.payload),
     );
 
     const unlistenPet = listen<PetState>("pet-state-changed", (e) =>
       setPet(e.payload),
+    );
+
+    invoke<boolean>("get_trail_enabled").then(setTrailOn);
+    const unlistenTrail = listen<boolean>("trail-enabled-changed", (e) =>
+      setTrailOn(e.payload),
     );
 
     let activityTimer: number | null = null;
@@ -216,6 +223,13 @@ function App() {
   return (
     <main className="stage" onMouseDown={startDrag}>
       {line && <SpeechBubble text={line} onDismiss={dismiss} />}
+
+      <TrailEffect
+          vx={vel.vx}
+          vy={vel.vy}
+          color={species ? `hsl(${species.hue}, 90%, 65%)` : "#7ee081"}
+          enabled={trailOn}
+        />
 
       <div
         className={`creature-holder ${dizzy ? "dizzy" : ""}`}
