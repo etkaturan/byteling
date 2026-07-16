@@ -59,7 +59,6 @@ function App() {
 
   const dragRaf = useRef<number | null>(null);
   const lastPos = useRef<{ x: number; y: number; t: number } | null>(null);
-  const interactiveNow = useRef(false);
 
   const mood: Mood = pet?.mood ?? "Content";
   const creatureName = species
@@ -172,13 +171,30 @@ function App() {
   };
 
   useEffect(() => {
-    invoke<Species>("get_species").then(setSpecies);
-    invoke<PetState | null>("get_pet_state").then((s) => {
-      if (s) setPet(s);
-    });
-    invoke<string>("get_active_character").then(setActiveCharId);
-    invoke<boolean>("get_trail_enabled").then(setTrailOn);
-    invoke<string>("get_roam_mode").then((m) => setRoamMode(m as RoamMode));
+    // The webview can be ready before Rust's setup() has managed AppState —
+    // in the packaged build this race left the pet permanently invisible,
+    // since the whole overlay is gated on species. Retry until it lands.
+    let speciesTries = 0;
+    const fetchSpecies = () => {
+      invoke<Species>("get_species")
+        .then(setSpecies)
+        .catch(() => {
+          if (speciesTries++ < 40) window.setTimeout(fetchSpecies, 150);
+          else console.error("get_species never resolved");
+        });
+    };
+    fetchSpecies();
+
+    invoke<PetState | null>("get_pet_state")
+      .then((s) => {
+        if (s) setPet(s);
+      })
+      .catch(() => {});
+    invoke<string>("get_active_character").then(setActiveCharId).catch(() => {});
+    invoke<boolean>("get_trail_enabled").then(setTrailOn).catch(() => {});
+    invoke<string>("get_roam_mode")
+      .then((m) => setRoamMode(m as RoamMode))
+      .catch(() => {});
 
     const unlistenChar = listen<string>("active-character-changed", (e) =>
       setActiveCharId(e.payload),
@@ -273,6 +289,8 @@ function App() {
 
     return () => {
       window.clearInterval(rectTimer);
+      unlistenPet.then((f) => f());
+      unlistenActivity.then((f) => f());
       unlistenChar.then((f) => f());
       unlistenTrail.then((f) => f());
       unlistenRoam.then((f) => f());
@@ -345,7 +363,27 @@ function App() {
     };
   }, [roamMode]);
 
-  if (!species) return null;
+  // Never render nothing — an invisible overlay is indistinguishable from a
+  // crash, and gating the whole pet on one async call is what made the
+  // packaged build launch blank.
+  if (!species) {
+    return (
+      <main className="stage">
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 40,
+            height: 40,
+            borderRadius: "50%",
+            background: "rgba(255,255,255,0.15)",
+          }}
+        />
+      </main>
+    );
+  }
 
   const baseChar = getCharacter(activeCharId) ?? CHARACTERS[0];
   const activeChar =

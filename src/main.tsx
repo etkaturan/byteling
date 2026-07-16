@@ -3,7 +3,6 @@ import ReactDOM from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App";
 import Clinic from "./Clinic";
-import Gallery from "./Gallery";
 import "./App.css";
 
 
