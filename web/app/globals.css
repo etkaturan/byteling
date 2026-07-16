@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0c0a0a;
+  --bg-1: #131010;
+  --bg-2: #1a1615;
+  --line: #2a2321;
+  --line-2: #3d3330;
+  --ink: #f5efec;
+  --ink-2: #b3a49d;
+  --ink-3: #74655f;
+  --ember: #ff7a3d;
+  --ember-dim: #8a3d1c;
+}
+
+html { scroll-behavior: smooth; }
+body { background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rise { animation: rise 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
