@@ -2,6 +2,7 @@ mod sensors;
 mod sim;
 mod care;
 mod personality;
+mod save;
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -54,8 +55,16 @@ fn preview_groom() -> care::GroomReport {
 }
 
 #[tauri::command]
-fn do_groom() -> care::GroomReport {
-    care::perform_groom()
+fn do_groom(state: tauri::State<save::SaveStore>) -> care::GroomReport {
+    let report = care::perform_groom();
+    state.mutate(|s| {
+        s.care.push(save::CareEvent {
+            at: save::now_rfc3339(),
+            kind: "groom".to_string(),
+            freed_mb: report.freed_mb as u64,
+        });
+    });
+    report
 }
 
 #[tauri::command]
@@ -106,10 +115,89 @@ fn has_groq_key(app: tauri::AppHandle) -> bool {
 /// Voice a line for the given context. Returns None if no key or the call
 /// fails — the frontend then keeps its canned line.
 #[tauri::command]
-async fn speak(app: tauri::AppHandle, ctx: SpeechContext) -> Option<String> {
+async fn speak(app: tauri::AppHandle, mut ctx: SpeechContext) -> Option<String> {
     let key = load_key(&app)?;
+    // The profile is authoritative and lives here, not in the frontend —
+    // callers can't forget to send it, and can't spoof it either.
+    if let Some(store) = app.try_state::<save::SaveStore>() {
+        let profile = store.read().profile;
+        ctx.user_name = profile.name;
+        ctx.user_notes = profile.notes;
+    }
     let provider = GroqProvider::new(key);
     provider.speak(&ctx).await
+}
+
+#[tauri::command]
+fn get_save(state: tauri::State<save::SaveStore>) -> save::SaveFile {
+    state.read()
+}
+
+#[tauri::command]
+fn get_profile(state: tauri::State<save::SaveStore>) -> save::UserProfile {
+    state.read().profile
+}
+
+#[tauri::command]
+fn set_profile(
+    app: tauri::AppHandle,
+    state: tauri::State<save::SaveStore>,
+    profile: save::UserProfile,
+) {
+    state.mutate(|s| s.profile = profile.clone());
+    let _ = app.emit("profile-changed", profile);
+}
+
+/// Days since the pet hatched. The save file is the source of truth for age —
+/// it survives a Windows reinstall, which the OS install date does not.
+#[tauri::command]
+fn get_pet_age_days(state: tauri::State<save::SaveStore>) -> f64 {
+    let hatched = state.read().hatched_at;
+    let then = parse_rfc3339_secs(&hatched).unwrap_or(0);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    ((now - then).max(0) as f64) / 86_400.0
+}
+
+/// Save an inbox item — something worth surviving the speech bubble.
+#[tauri::command]
+fn add_inbox_item(
+    app: tauri::AppHandle,
+    state: tauri::State<save::SaveStore>,
+    text: String,
+) {
+    let item = save::InboxItem {
+        id: save::now_rfc3339(),
+        at: save::now_rfc3339(),
+        text,
+        seen: false,
+    };
+    state.mutate(|s| {
+        s.inbox.push(item.clone());
+        // Keep it bounded; the pet's inbox is a notice board, not an archive.
+        let overflow = s.inbox.len().saturating_sub(50);
+        if overflow > 0 {
+            s.inbox.drain(0..overflow);
+        }
+    });
+    let _ = app.emit("inbox-changed", ());
+}
+
+#[tauri::command]
+fn get_inbox(state: tauri::State<save::SaveStore>) -> Vec<save::InboxItem> {
+    state.read().inbox
+}
+
+#[tauri::command]
+fn mark_inbox_seen(app: tauri::AppHandle, state: tauri::State<save::SaveStore>, id: String) {
+    state.mutate(|s| {
+        if let Some(item) = s.inbox.iter_mut().find(|i| i.id == id) {
+            item.seen = true;
+        }
+    });
+    let _ = app.emit("inbox-changed", ());
 }
 
 #[tauri::command]
@@ -232,9 +320,28 @@ fn set_loadout(app: tauri::AppHandle, loadout: serde_json::Value) -> Result<(), 
     Ok(())
 }
 
+/// Parse the narrow RFC3339 subset our own save file writes.
+fn parse_rfc3339_secs(s: &str) -> Option<i64> {
+    let bytes = s.as_bytes();
+    if bytes.len() < 19 {
+        return None;
+    }
+    let num = |a: usize, b: usize| -> Option<i64> { s.get(a..b)?.parse().ok() };
+    let (y, mo, d) = (num(0, 4)?, num(5, 7)?, num(8, 10)?);
+    let (h, mi, sec) = (num(11, 13)?, num(14, 16)?, num(17, 19)?);
+
+    // days_from_civil, the standard algorithm.
+    let y2 = if mo <= 2 { y - 1 } else { y };
+    let era = y2.div_euclid(400);
+    let yoe = y2 - era * 400;
+    let mp = if mo > 2 { mo - 3 } else { mo + 9 };
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    Some(days * 86_400 + h * 3600 + mi * 60 + sec)
+}
+
 /// Friendly display name for a known executable, else a cleaned-up fallback.
-/// Unknown apps get a readable name rather than a wrong one — the pet should
-/// never sound confidently mistaken about what you're using.
 fn pretty_app_name(exe: &str) -> String {
     let name = match exe {
         // Editors / dev
@@ -398,6 +505,15 @@ pub fn run() {
                 specs,
                 latest: Mutex::new(None),
             });
+
+            // The save file — everything durable lives here from now on.
+            let store = save::SaveStore::load(app.handle());
+            let save_snapshot = store.read();
+            println!(
+                "💾 save: schema v{}, hatched {}, session {}",
+                save_snapshot.schema_version, save_snapshot.hatched_at, save_snapshot.sessions
+            );
+            app.manage(store);
 
             // The sensor→sim loop feeds the UI through events.
             let handle = app.handle().clone();
@@ -568,7 +684,14 @@ pub fn run() {
             cursor_idle_ms,
             get_loadout,
             set_loadout,
-            set_hit_rects
+            set_hit_rects,
+            get_save,
+            get_profile,
+            set_profile,
+            get_pet_age_days,
+            add_inbox_item,
+            get_inbox,
+            mark_inbox_seen
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

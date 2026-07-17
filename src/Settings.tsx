@@ -9,13 +9,28 @@ function Settings() {
   const [autostart, setAutostart] = useState(false);
   const [trailOn, setTrailOn] = useState(true);
   const [roamMode, setRoamMode] = useState("still");
+  const [name, setName] = useState("");
+  const [notes, setNotes] = useState("");
+  const [profileStatus, setProfileStatus] = useState<string | null>(null);
 
   useEffect(() => {
+    invoke<{ name: string; notes: string }>("get_profile")
+      .then((p) => {
+        setName(p.name ?? "");
+        setNotes(p.notes ?? "");
+      })
+      .catch(() => {});
     invoke<boolean>("has_groq_key").then(setHasKey);
     invoke<boolean>("get_trail_enabled").then(setTrailOn);
     invoke<string>("get_roam_mode").then(setRoamMode);
     isEnabled().then(setAutostart).catch(() => {});
   }, []);
+
+  const saveProfile = async () => {
+    await invoke("set_profile", { profile: { name: name.trim(), notes: notes.trim() } });
+    setProfileStatus("Saved ✓");
+    setTimeout(() => setProfileStatus(null), 4000);
+  };
 
   const chooseRoam = async (mode: string) => {
     await invoke("set_roam_mode", { mode });
@@ -63,6 +78,61 @@ function Settings() {
   };
 
   return (
+    <>
+    <section className="card" style={{ marginBottom: 16 }}>
+      <h2>About you</h2>
+      <p style={{ fontSize: 13, color: "#9aa0ad", marginTop: 0 }}>
+        What your Byteling knows about you. It only uses this when it speaks —
+        it never leaves your machine except with the AI voice, if you've enabled it.
+      </p>
+      <label style={{ display: "block", fontSize: 13, marginTop: 12, marginBottom: 6 }}>
+        What should it call you?
+      </label>
+      <input
+        type="text"
+        placeholder="Leave blank and it'll just say 'you'"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        style={{
+          width: "100%",
+          padding: "6px 10px",
+          borderRadius: 8,
+          border: "1px solid #2a2f3a",
+          background: "#0f1117",
+          color: "#e6e8ee",
+          fontSize: 13,
+        }}
+      />
+      <label style={{ display: "block", fontSize: 13, marginTop: 14, marginBottom: 6 }}>
+        Anything it should always remember
+      </label>
+      <textarea
+        rows={3}
+        placeholder="I'm a developer, I work late, I hate when my fans get loud…"
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        style={{
+          width: "100%",
+          padding: "6px 10px",
+          borderRadius: 8,
+          border: "1px solid #2a2f3a",
+          background: "#0f1117",
+          color: "#e6e8ee",
+          fontSize: 13,
+          fontFamily: "inherit",
+          resize: "vertical",
+        }}
+      />
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+        <button className="settings-btn" onClick={saveProfile}>
+          Save
+        </button>
+        {profileStatus && (
+          <span style={{ fontSize: 12, color: "#7ee081" }}>{profileStatus}</span>
+        )}
+      </div>
+    </section>
+
     <section className="card">
       <h2>AI Voice (Groq)</h2>
       <p style={{ fontSize: 13, color: "#9aa0ad", marginTop: 0 }}>
@@ -154,6 +224,7 @@ function Settings() {
         </p>
       </div>
     </section>
+    </>
   );
 }
 

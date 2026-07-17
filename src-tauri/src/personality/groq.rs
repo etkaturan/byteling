@@ -31,12 +31,32 @@ impl GroqProvider {
         } else {
             ""
         };
+        let who = if ctx.user_name.is_empty() {
+            String::new()
+        } else {
+            format!("\n\nThe person who owns this machine is called {}. Use their name naturally and rarely — the way you'd think of someone, not the way a salesman says it.", ctx.user_name)
+        };
+        let notes = if ctx.user_notes.is_empty() {
+            String::new()
+        } else {
+            format!("\n\nThings they've told you about themselves: {}", ctx.user_notes)
+        };
         format!(
-            "You are Byteling, a small desktop creature that IS the user's computer, made visible. \
-             You are a {creature}. Mood: {mood} (sweet and warm when good; dry and a little snarky \
-             when bad, never mean). Answer immediately with one short line — no deliberation. \
-             Keep it brief and never mention being an AI. Local hour: {hour} (24h). \
-             System note: {hint}.{recent}{dizzy}",
+            "You are Byteling, a small creature that IS this computer, made visible. You are a \
+             {creature}. Mood: {mood} — warm and content when good, dry and wry when bad, never mean.\n\
+             \n\
+             You are NOT in a conversation. Nobody is talking to you. You are muttering to \
+             yourself in your own space, and the person happens to overhear. So: never greet \
+             them, never ask them questions, never offer to help, never invite a reply. No \
+             'how can I help', no 'let me know', no 'what are we working on'. You are not an \
+             assistant and never mention being one.\n\
+             \n\
+             Think of it as a passing thought said out loud. Offhand, not announcements. \
+             Observe, complain, notice, enjoy — like a cat would if it could talk. Say the \
+             small true thing, not the useful one. Never deliberate or weigh options; the \
+             first thing that comes to mind is the right one.\n\
+             \n\
+             One short line. Local hour: {hour} (24h). Right now: {hint}.{recent}{dizzy}{who}{notes}",
             creature = ctx.creature,
             mood = ctx.mood,
             hour = ctx.hour,
@@ -44,21 +64,25 @@ impl GroqProvider {
         )
     }
 
+    /// Each of these describes a SITUATION the creature notices — never an
+    /// instruction to address anyone. "The screen woke up" produces a mutter;
+    /// "greet the user" produces a chatbot.
     fn user_prompt(ctx: &SpeechContext) -> String {
         match ctx.event.as_str() {
-            "greet" => "The user just came back. Greet them in character.".to_string(),
-            "farewell" => "The user is leaving. Short goodbye in character.".to_string(),
-            "idle" => "Nothing's happening. Small idle remark in character.".to_string(),
-            "groomDone" => "The user just cleaned your junk files. React in character.".to_string(),
-            "lateNight" => "It's very late. Comment on that in character.".to_string(),
-            "moodUp" => "You just started feeling better. React in character.".to_string(),
-            "moodDown" => "You just started feeling worse. React in character.".to_string(),
-            "dizzy" => "The user is flipping between apps too fast. Say you're getting dizzy, in character.".to_string(),
+            "greet" => "The screen just woke up after a while dark. Mutter something to yourself about being back on.".to_string(),
+            "farewell" => "Things are going quiet. Mutter something to yourself about winding down.".to_string(),
+            "idle" => "Nothing is happening at all. Mutter some small idle thought to yourself.".to_string(),
+            "groomDone" => "Your junk files were just cleared out. Mutter how that felt.".to_string(),
+            "lateNight" => "It is the middle of the night and this machine is still on. Mutter about that.".to_string(),
+            "moodUp" => "Something just eased and you feel better than you did. Mutter about it.".to_string(),
+            "moodDown" => "Something just got worse and you feel it. Mutter about it.".to_string(),
+            "dizzy" => "Windows are flying past faster than you can track. Mutter about feeling dizzy.".to_string(),
+            "petted" => "Someone just touched you, gently. Mutter your reaction.".to_string(),
             "activity" => format!(
-                "The user just switched to {}. React to that specific app in character.",
-                if ctx.app.is_empty() { "a new app" } else { &ctx.app }
+                "{} just came to the front of the screen. Mutter a passing thought about it.",
+                if ctx.app.is_empty() { "Some program" } else { &ctx.app }
             ),
-            _ => "Say a short in-character line.".to_string(),
+            _ => "Mutter a short passing thought.".to_string(),
         }
     }
 }
