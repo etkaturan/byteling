@@ -16,7 +16,7 @@ export default function DownloadPage() {
     <>
       <Header />
       <main className="mx-auto max-w-6xl px-6 sm:px-10">
-        <section className="flex min-h-[60vh] flex-col justify-center border-b py-20" style={{ borderColor: "var(--line)" }}>
+      <section data-section="hero" className="flex min-h-[90vh] flex-col justify-center border-b py-20" style={{ borderColor: "var(--line)" }}>
           <p className="mb-6 text-[12px] font-medium uppercase tracking-[0.22em]" style={{ color: "var(--ember)" }}>
             v{release.version} · {release.headline}
           </p>
@@ -36,6 +36,11 @@ export default function DownloadPage() {
           </div>
         </section>
 
+        {/* One marker for the whole rest of the page: these sections are all
+            short and adjacent, so observing them individually just creates
+            competing near-equal ratios. They all mean the same thing to the
+            pet anyway — "not the hero". */}
+        <div data-section="page">
         <section className="border-b py-20" style={{ borderColor: "var(--line)" }}>
           <h2 className="text-[13px] font-medium uppercase tracking-[0.18em]" style={{ color: "var(--ink-3)" }}>
             Other platforms
@@ -94,6 +99,7 @@ export default function DownloadPage() {
             Full release notes on GitHub
           </a>
         </section>
+        </div>
       </main>
       <Footer />
     </>
