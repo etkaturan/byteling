@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import PetView from "./pets/PetView";
 import { CHARACTERS } from "./pets/registry";
 
+
 function Shop() {
   const [activeId, setActiveId] = useState("hardware");
 
