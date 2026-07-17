@@ -1,5 +1,7 @@
 import SiteByteling from "@/components/byteling/SiteByteling";
 import SiteCreature from "@/components/byteling/SiteCreature";
+import Header from "@/components/layout/Header";
+import Footer from "@/components/layout/Footer";
 
 const SPECIMENS = [
   { s: { family: "Grounded", life_stage: "Elder", build: "Mighty", hue: 15, limbs: 8, markings: 3, liveliness: 1.1 }, m: "Desktop", d: "8 cores · 6 years old" },
@@ -26,28 +28,7 @@ export default function Home() {
   return (
     <>
       <SiteByteling />
-
-      <header
-        className="sticky top-0 z-50 border-b backdrop-blur-xl"
-        style={{ borderColor: "var(--line)", background: "rgba(12,10,10,0.72)" }}
-      >
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-6 sm:px-10">
-          <svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M2 12 L6.5 12 L9 6 L13 19 L15.5 12 L22 12" fill="none" stroke="var(--ember)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span className="text-[19px] font-medium tracking-tight">Byteling</span>
-          <nav className="ml-auto hidden items-center gap-8 sm:flex">
-            {NAV.map((n) => (
-              <a key={n.href} href={n.href} className="text-[14px] transition-colors hover:text-[var(--ink)]" style={{ color: "var(--ink-2)" }}>
-                {n.label}
-              </a>
-            ))}
-            <a href="https://github.com/etkaturan/byteling" className="rounded-lg border px-4 py-1.5 text-[14px] transition-colors" style={{ borderColor: "var(--line-2)", color: "var(--ink-2)" }}>
-              Source
-            </a>
-          </nav>
-        </div>
-      </header>
+      <Header />
 
       <main className="mx-auto max-w-6xl px-6 sm:px-10">
         <section data-section="hero" className="flex min-h-[82vh] flex-col justify-center">
@@ -144,12 +125,7 @@ export default function Home() {
         </section>
       </main>
 
-      <footer className="mx-auto max-w-6xl border-t px-6 py-10 text-[13px] sm:px-10" style={{ borderColor: "var(--line)", color: "var(--ink-3)" }}>
-        MIT licensed ·{" "}
-        <a href="https://github.com/etkaturan/byteling" className="underline">
-          github.com/etkaturan/byteling
-        </a>
-      </footer>
+      <Footer />
     </>
   );
 }
