@@ -24,6 +24,12 @@ pub struct SpeechContext {
     /// Whether the user is rapidly switching apps ("dizzy").
     #[serde(default)]
     pub dizzy: bool,
+    /// What the user is called, if they've said. Empty means "you".
+    #[serde(default)]
+    pub user_name: String,
+    /// Freeform facts the user wants the pet to always know.
+    #[serde(default)]
+    pub user_notes: String,
 }
 
 
