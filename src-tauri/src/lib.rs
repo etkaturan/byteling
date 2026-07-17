@@ -5,6 +5,8 @@ mod personality;
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
+use std::time::Instant;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
@@ -26,10 +28,15 @@ struct MachineSpecs {
     gpu: Option<String>,
 }
 
-/// Wall-clock millis of the last real cursor movement anywhere on screen.
-static LAST_CURSOR_MOVE: AtomicU64 = AtomicU64::new(0);
+/// Anchor for all cursor-idle timing — monotonic, so it can't be confused by
+/// wall-clock jumps (NTP sync, DST).
+static PROCESS_START: OnceLock<Instant> = OnceLock::new();
+/// Millis since PROCESS_START of the last real cursor movement anywhere.
+/// Stamped on the very first loop tick too, so idle time is always a real,
+/// well-defined duration from launch rather than an ambiguous sentinel.
+static LAST_CURSOR_MOVE_MS: AtomicU64 = AtomicU64::new(0);
 /// Last cursor position, packed, so we only stamp on actual movement.
-static LAST_CURSOR_KEY: AtomicU64 = AtomicU64::new(0);
+static LAST_CURSOR_KEY: AtomicU64 = AtomicU64::new(u64::MAX);
 
 /// Interactive regions, in window-relative logical px, published by the
 /// frontend. It knows the pet's real bounds and any open UI; Rust cannot.
@@ -77,16 +84,10 @@ fn set_hit_rects(rects: Vec<(f64, f64, f64, f64)>) {
 /// window sees the cursor pass over it while you work elsewhere.
 #[tauri::command]
 fn cursor_idle_ms() -> u64 {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
-    let last = LAST_CURSOR_MOVE.load(Ordering::Relaxed);
-    if last == 0 {
-        0
-    } else {
-        now.saturating_sub(last)
-    }
+    let start = *PROCESS_START.get_or_init(Instant::now);
+    let now_ms = start.elapsed().as_millis() as u64;
+    let last_move_ms = LAST_CURSOR_MOVE_MS.load(Ordering::Relaxed);
+    now_ms.saturating_sub(last_move_ms)
 }
 
 /// Save (or clear) the user's Groq API key.
@@ -409,11 +410,11 @@ pub fn run() {
                     };
                     let key = (((cursor.x as i64) << 32) ^ (cursor.y as i64)) as u64;
                     if LAST_CURSOR_KEY.swap(key, Ordering::Relaxed) != key {
-                        let now = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map(|d| d.as_millis() as u64)
-                            .unwrap_or(0);
-                        LAST_CURSOR_MOVE.store(now, Ordering::Relaxed);
+                        let start = *PROCESS_START.get_or_init(Instant::now);
+                        LAST_CURSOR_MOVE_MS.store(
+                            start.elapsed().as_millis() as u64,
+                            Ordering::Relaxed,
+                        );
                     }
 
                     // Coarse gate: while the cursor is inside the window's
