@@ -1,0 +1,70 @@
+/* Shared keyframes for wearables whose motion is more than the simple
+   velocity-driven transitions used elsewhere. */
+
+@keyframes wearable-halo-hover {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1.5px); }
+}
+.wearable-halo {
+  animation: wearable-halo-hover 2.4s ease-in-out infinite;
+}
+
+@keyframes wearable-saber-flicker {
+  0%, 100% { opacity: 1; }
+  8% { opacity: 0.85; }
+  10% { opacity: 1; }
+  30% { opacity: 0.92; }
+  32% { opacity: 1; }
+  61% { opacity: 0.88; }
+  63% { opacity: 1; }
+}
+.wearable-lightsaber-blade {
+  animation: wearable-saber-flicker 2.6s ease-in-out infinite;
+}
+
+@keyframes wearable-wing-flutter {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.94); }
+}
+.wearable-wings {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: wearable-wing-flutter 2.8s ease-in-out infinite;
+}
+
+/* Particles: falling (feathers, ash), rising (embers), or orbiting (wind).
+   Duration/delay are set per-particle inline for stagger, so these only
+   define the motion shape and looping — not timing. */
+@keyframes wearable-particle-fall {
+  0% { transform: translateY(0px); opacity: 0; }
+  12% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translateY(40px); opacity: 0; }
+}
+.wearable-particle-fall {
+  animation-name: wearable-particle-fall;
+  animation-timing-function: ease-in;
+  animation-iteration-count: infinite;
+}
+
+@keyframes wearable-particle-rise {
+  0% { transform: translateY(0px); opacity: 0; }
+  12% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translateY(-34px); opacity: 0; }
+}
+.wearable-particle-rise {
+  animation-name: wearable-particle-rise;
+  animation-timing-function: ease-out;
+  animation-iteration-count: infinite;
+}
+
+@keyframes wearable-particle-orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.wearable-particle-orbit {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: wearable-particle-orbit 7s linear infinite;
+}

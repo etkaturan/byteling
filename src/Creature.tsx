@@ -21,10 +21,14 @@ type Props = {
   species: Species;
   mood?: Mood;
   size?: number;
-  /** Horizontal velocity (px/frame-ish). Drives inertia lean + limb curve. */
   vx?: number;
-  /** Vertical velocity. */
   vy?: number;
+  /** Drawn BEHIND the body — back attachments (tail, wings) land here so the
+   * body silhouette overlaps their base and only their reach pokes out. */
+  backOverlay?: React.ReactNode;
+  /** Drawn ABOVE the body, after the eyes — headwear, accessories, and held
+   * items land here. */
+  overlay?: React.ReactNode;
 };
 
 const STAGE_SCALE: Record<Species["life_stage"], number> = {
@@ -47,7 +51,15 @@ const MOOD_ANIM: Record<Mood, string> = {
   Critical: "mood-critical",
 };
 
-function Creature({ species, mood = "Content", size = 140, vx = 0, vy = 0 }: Props) {
+function Creature({
+  species,
+  mood = "Content",
+  size = 140,
+  vx = 0,
+  vy = 0,
+  backOverlay,
+  overlay,
+}: Props) {
   const { family, life_stage, build, hue, limbs, markings, liveliness } =
     species;
 
@@ -185,6 +197,7 @@ function Creature({ species, mood = "Content", size = 140, vx = 0, vy = 0 }: Pro
             } as React.CSSProperties
           }
         >
+          {backOverlay}
           <ellipse
             className="aura"
             cx="50"
@@ -205,6 +218,7 @@ function Creature({ species, mood = "Content", size = 140, vx = 0, vy = 0 }: Pro
             <circle cx={43.5} cy={46} r={eyeR / 3} fill="#fff" opacity="0.9" />
             <circle cx={59.5} cy={46} r={eyeR / 3} fill="#fff" opacity="0.9" />
           </g>
+          {overlay}
         </g>
       </g>
     </svg>

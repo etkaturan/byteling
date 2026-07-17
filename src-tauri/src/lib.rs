@@ -206,6 +206,32 @@ fn roam_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     Some(dir.join("roam_mode.txt"))
 }
 
+fn loadout_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let dir = app.path().app_config_dir().ok()?;
+    let _ = fs::create_dir_all(&dir);
+    Some(dir.join("loadout.json"))
+}
+
+/// One equipped item id per slot ("headwear"/"accessory"/"handtool"/"back"),
+/// stored as a flat JSON object. Empty object if nothing is equipped yet.
+#[tauri::command]
+fn get_loadout(app: tauri::AppHandle) -> serde_json::Value {
+    loadout_path(&app)
+        .and_then(|p| fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| serde_json::json!({}))
+}
+
+#[tauri::command]
+fn set_loadout(app: tauri::AppHandle, loadout: serde_json::Value) -> Result<(), String> {
+    if let Some(path) = loadout_path(&app) {
+        let text = serde_json::to_string(&loadout).map_err(|e| e.to_string())?;
+        fs::write(path, text).map_err(|e| e.to_string())?;
+    }
+    let _ = app.emit("loadout-changed", loadout);
+    Ok(())
+}
+
 /// Friendly display name for a known executable, else a cleaned-up fallback.
 /// Unknown apps get a readable name rather than a wrong one — the pet should
 /// never sound confidently mistaken about what you're using.
@@ -476,6 +502,20 @@ pub fn run() {
                 }));
             });
 
+            // Closing the clinic (the X button) would otherwise destroy the
+            // window; the tray's "Open clinic" only shows an EXISTING window,
+            // so a destroyed one could never be reopened without a restart.
+            // Hide instead, so the tray can always bring it back.
+            if let Some(clinic_window) = app.get_webview_window("clinic") {
+                let clinic_window_clone = clinic_window.clone();
+                clinic_window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = clinic_window_clone.hide();
+                    }
+                });
+            }
+
             let clinic =
                 MenuItem::with_id(app, "clinic", "Open clinic", true, None::<&str>)?;
             // System tray: the pet's official residence. Hide/show + quit.
@@ -526,6 +566,8 @@ pub fn run() {
             get_roam_mode,
             set_roam_mode,
             cursor_idle_ms,
+            get_loadout,
+            set_loadout,
             set_hit_rects
         ])
         .run(tauri::generate_context!())

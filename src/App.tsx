@@ -12,6 +12,7 @@ import { useChatter } from "./useChatter";
 import { recordSwitch, recentApps, isDizzy } from "./activityBrain";
 import PetView from "./pets/PetView";
 import { getCharacter, CHARACTERS } from "./pets/registry";
+import type { Loadout } from "./pets/wearables/registry";
 import type { Action } from "./pets/types";
 import TrailEffect from "./effects/TrailEffect";
 import { RoamBrain, configFor, type RoamMode } from "./roaming";
@@ -51,6 +52,7 @@ function App() {
   const [vel, setVel] = useState({ vx: 0, vy: 0 });
   const [trailOn, setTrailOn] = useState(true);
   const [roamMode, setRoamMode] = useState<RoamMode>("still");
+  const [loadout, setLoadout] = useState<Loadout>({});
 
   const userControlling = useRef(false);
   const roamRaf = useRef<number | null>(null);
@@ -192,9 +194,8 @@ function App() {
       .catch(() => {});
     invoke<string>("get_active_character").then(setActiveCharId).catch(() => {});
     invoke<boolean>("get_trail_enabled").then(setTrailOn).catch(() => {});
-    invoke<string>("get_roam_mode")
-      .then((m) => setRoamMode(m as RoamMode))
-      .catch(() => {});
+    invoke<string>("get_roam_mode").then((m) => setRoamMode(m as RoamMode));
+    invoke<Loadout>("get_loadout").then(setLoadout).catch(() => {});
 
     const unlistenChar = listen<string>("active-character-changed", (e) =>
       setActiveCharId(e.payload),
@@ -207,6 +208,9 @@ function App() {
     );
     const unlistenRoam = listen<string>("roam-mode-changed", (e) =>
       setRoamMode(e.payload as RoamMode),
+    );
+    const unlistenLoadout = listen<Loadout>("loadout-changed", (e) =>
+      setLoadout(e.payload),
     );
 
     let activityTimer: number | null = null;
@@ -294,6 +298,7 @@ function App() {
       unlistenChar.then((f) => f());
       unlistenTrail.then((f) => f());
       unlistenRoam.then((f) => f());
+      unlistenLoadout.then((f) => f());
       if (activityTimer) window.clearTimeout(activityTimer);
       if (dragRaf.current) cancelAnimationFrame(dragRaf.current);
     };
@@ -416,6 +421,7 @@ function App() {
           }}
           vx={vel.vx}
           vy={vel.vy}
+          loadout={loadout}
         />
       </div>
 
