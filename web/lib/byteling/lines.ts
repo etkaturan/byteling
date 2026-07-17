@@ -3,9 +3,14 @@
  * app-awareness mechanic: on your desktop it comments on which app you focus,
  * here it comments on what you're reading. Same idea, different signal.
  */
-export type SectionId = "hero" | "how" | "privacy" | "download" | "source";
+export type SectionId = "hero" | "how" | "privacy" | "download" | "source" | "page";
 
 export const LINES: Record<SectionId, string[]> = {
+  page: [
+    "A different page. Still me.",
+    "Here too.",
+    "Following along.",
+  ],
   hero: [
     "Oh — a visitor. Hello.",
     "You made it. Come in.",

@@ -1,4 +1,3 @@
-import SiteByteling from "@/components/byteling/SiteByteling";
 import SiteCreature from "@/components/byteling/SiteCreature";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -27,7 +26,6 @@ const NAV = [
 export default function Home() {
   return (
     <>
-      <SiteByteling />
       <Header />
 
       <main className="mx-auto max-w-6xl px-6 sm:px-10">
