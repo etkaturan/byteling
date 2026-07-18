@@ -11,7 +11,8 @@ use std::time::Instant;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
-use personality::{GroqProvider, SpeechContext, VoiceProvider};
+use personality::{ChatMessage, GroqProvider, SpeechContext, VoiceProvider};
+use tauri_plugin_autostart::MacosLauncher;
 use std::fs;
 use std::path::PathBuf;
 
@@ -128,10 +129,198 @@ async fn speak(app: tauri::AppHandle, mut ctx: SpeechContext) -> Option<String> 
     provider.speak(&ctx).await
 }
 
+
+/// How many verbatim turns we keep before folding the oldest into a digest.
+const CHAT_VERBATIM_LIMIT: usize = 40;
+/// How many we fold at a time — leaves recent context intact.
+const CHAT_DIGEST_BATCH: usize = 20;
+
+#[tauri::command]
+fn get_chat(state: tauri::State<save::SaveStore>) -> Vec<save::ChatTurn> {
+    state.read().chat
+}
+
+/// Send a message and get a reply. The whole exchange is persisted, and old
+/// turns get folded into timestamped digests rather than growing forever.
+#[tauri::command]
+async fn chat(app: tauri::AppHandle, message: String) -> Result<String, String> {
+    let key = load_key(&app).ok_or("No Groq key set — add one in Settings to chat.")?;
+
+    // Snapshot what we need before any await; State isn't Send.
+    let (mut history, digests, profile, creature, mood, hint) = {
+        let store = app
+            .try_state::<save::SaveStore>()
+            .ok_or("save unavailable")?;
+        let snap = store.read();
+        let app_state = app.try_state::<AppState>().ok_or("state unavailable")?;
+        let species = app_state.species.clone();
+        let pet = app_state.latest.lock().unwrap().clone();
+        let (mood, hint) = match &pet {
+            Some(p) => (
+                format!("{:?}", p.mood),
+                match p.needs.space {
+                    Some(s) if s < 20.0 => "disk nearly full".to_string(),
+                    _ => "all is well".to_string(),
+                },
+            ),
+            None => ("Content".to_string(), "all is well".to_string()),
+        };
+        (
+            snap.chat.clone(),
+            snap.digests.clone(),
+            snap.profile.clone(),
+            format!("{:?} {:?}", species.life_stage, species.family),
+            mood,
+            hint,
+        )
+    };
+
+    // Record what they said first — if the call fails, we still remember it.
+    if let Some(store) = app.try_state::<save::SaveStore>() {
+        store.mutate(|s| {
+            s.chat.push(save::ChatTurn {
+                at: save::now_rfc3339(),
+                who: save::Speaker::User,
+                text: message.clone(),
+            });
+        });
+    }
+
+    // Digests first, so older context survives compression as background.
+    let mut messages: Vec<ChatMessage> = Vec::new();
+    if !digests.is_empty() {
+        let recap = digests
+            .iter()
+            .map(|d| format!("({} to {}) {}", &d.from[..10], &d.to[..10], d.summary))
+            .collect::<Vec<_>>()
+            .join(" ");
+        messages.push(ChatMessage {
+            role: "system".to_string(),
+            content: format!("Earlier conversations, summarised: {recap}"),
+        });
+    }
+    for turn in &history {
+        messages.push(ChatMessage {
+            role: match turn.who {
+                save::Speaker::User => "user".to_string(),
+                save::Speaker::Pet => "assistant".to_string(),
+            },
+            content: turn.text.clone(),
+        });
+    }
+    messages.push(ChatMessage {
+        role: "user".to_string(),
+        content: message.clone(),
+    });
+
+    let provider = GroqProvider::new(key);
+    let reply = provider
+        .converse(
+            &creature,
+            &mood,
+            &hint,
+            &profile.name,
+            &profile.notes,
+            &messages,
+        )
+        .await
+        .ok_or("Byteling didn't answer. Try again?")?;
+
+    if let Some(store) = app.try_state::<save::SaveStore>() {
+        store.mutate(|s| {
+            s.chat.push(save::ChatTurn {
+                at: save::now_rfc3339(),
+                who: save::Speaker::Pet,
+                text: reply.clone(),
+            });
+        });
+    }
+    history.push(save::ChatTurn {
+        at: save::now_rfc3339(),
+        who: save::Speaker::Pet,
+        text: reply.clone(),
+    });
+
+    let _ = app.emit("chat-changed", ());
+    maybe_compress_chat(&app).await;
+    Ok(reply)
+}
+
+/// Fold the oldest turns into a digest once history grows past the limit.
+/// Runs after a reply is already delivered, so the person never waits on it.
+async fn maybe_compress_chat(app: &tauri::AppHandle) {
+    let (batch, key) = {
+        let Some(store) = app.try_state::<save::SaveStore>() else {
+            return;
+        };
+        let snap = store.read();
+        if snap.chat.len() <= CHAT_VERBATIM_LIMIT {
+            return;
+        }
+        let Some(key) = load_key(app) else { return };
+        (
+            snap.chat[..CHAT_DIGEST_BATCH.min(snap.chat.len())].to_vec(),
+            key,
+        )
+    };
+    if batch.is_empty() {
+        return;
+    }
+
+    let transcript = batch
+        .iter()
+        .map(|t| {
+            let who = match t.who {
+                save::Speaker::User => "Them",
+                save::Speaker::Pet => "You",
+            };
+            format!("{who}: {}", t.text)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let provider = GroqProvider::new(key);
+    let summary = provider
+        .converse(
+            "archivist",
+            "Content",
+            "compressing old memories",
+            "",
+            "",
+            &[ChatMessage {
+                role: "user".to_string(),
+                content: format!(
+                    "Condense this conversation into two or three sentences of notes for your \
+                     own future reference. Keep names, facts, decisions and anything they told \
+                     you about themselves. Drop small talk. Write it as notes, not prose.\n\n{transcript}"
+                ),
+            }],
+        )
+        .await;
+
+    let Some(summary) = summary else { return };
+    let (from, to) = (batch[0].at.clone(), batch[batch.len() - 1].at.clone());
+
+    if let Some(store) = app.try_state::<save::SaveStore>() {
+        store.mutate(|s| {
+            let n = CHAT_DIGEST_BATCH.min(s.chat.len());
+            s.chat.drain(0..n);
+            s.digests.push(save::ChatDigest {
+                from,
+                to,
+                summary,
+                turns: n,
+            });
+        });
+    }
+    let _ = app.emit("chat-changed", ());
+}
+
 #[tauri::command]
 fn get_save(state: tauri::State<save::SaveStore>) -> save::SaveFile {
     state.read()
 }
+
 
 #[tauri::command]
 fn get_profile(state: tauri::State<save::SaveStore>) -> save::UserProfile {
@@ -486,6 +675,10 @@ fn pretty_app_name(exe: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            None,
+        ))
         .setup(|app| {
             let mut sensors = sensors::SensorService::new();
             let id = sensors.hardware_identity();
@@ -632,6 +825,16 @@ pub fn run() {
                 });
             }
 
+            if let Some(chat_window) = app.get_webview_window("chat") {
+                let chat_window_clone = chat_window.clone();
+                chat_window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = chat_window_clone.hide();
+                    }
+                });
+            }
+
             let clinic =
                 MenuItem::with_id(app, "clinic", "Open clinic", true, None::<&str>)?;
             // System tray: the pet's official residence. Hide/show + quit.
@@ -691,7 +894,9 @@ pub fn run() {
             get_pet_age_days,
             add_inbox_item,
             get_inbox,
-            mark_inbox_seen
+            mark_inbox_seen,
+            get_chat,
+            chat
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

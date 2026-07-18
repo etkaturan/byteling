@@ -449,6 +449,20 @@ function App() {
           >
             {grooming ? "Grooming…" : groomMsg ?? "🧹 Groom"}
           </button>
+          <button
+            className="menu-item"
+            onClick={async () => {
+              setMenuOpen(false);
+              const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+              const w = await WebviewWindow.getByLabel("chat");
+              if (w) {
+                await w.show();
+                await w.setFocus();
+              }
+            }}
+          >
+            💬 Talk
+          </button>
           <button className="menu-item" onClick={() => setShowStats((v) => !v)}>
             {showStats ? "Hide stats" : "Show stats"}
           </button>

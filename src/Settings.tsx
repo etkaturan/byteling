@@ -72,8 +72,12 @@ function Settings() {
         await enable();
         setAutostart(true);
       }
+      // Trust the OS, not our own optimism — re-read what actually stuck.
+      setAutostart(await isEnabled());
     } catch (e) {
-      console.error(e);
+      console.error("autostart:", e);
+      setProfileStatus("Couldn't change startup setting");
+      setTimeout(() => setProfileStatus(null), 4000);
     }
   };
 

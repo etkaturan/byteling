@@ -3,12 +3,13 @@ import ReactDOM from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App";
 import Clinic from "./Clinic";
+import Chat from "./Chat";
 import "./App.css";
 
 
 // Each window renders a different page, decided by its Tauri label.
 const label = getCurrentWindow().label;
-const Page = label === "clinic" ? Clinic : App;
+const Page = label === "clinic" ? Clinic : label === "chat" ? Chat : App;
 
 
 

@@ -7,6 +7,13 @@ use super::{SpeechContext, VoiceProvider};
 const ENDPOINT: &str = "https://api.groq.com/openai/v1/chat/completions";
 const MODEL: &str = "openai/gpt-oss-20b";
 
+/// One turn of conversation as the API wants it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ChatMessage {
+    pub role: String,
+    pub content: String,
+}
+
 pub struct GroqProvider {
     api_key: String,
     client: reqwest::Client,
@@ -133,6 +140,91 @@ impl VoiceProvider for GroqProvider {
             Some(s) if !s.trim().is_empty() => Some(s.trim().trim_matches('"').to_string()),
             _ => {
                 eprintln!("groq: no content in response: {json}");
+                None
+            }
+        }
+    }
+}
+
+impl GroqProvider {
+    /// Hold a real conversation. Unlike `speak`, this IS a dialogue — the
+    /// person is actually talking, so the muttering-to-itself framing that
+    /// governs ambient lines would be wrong here.
+    pub async fn converse(
+        &self,
+        creature: &str,
+        mood: &str,
+        hint: &str,
+        user_name: &str,
+        user_notes: &str,
+        history: &[ChatMessage],
+    ) -> Option<String> {
+        let who = if user_name.is_empty() {
+            String::new()
+        } else {
+            format!(" They're called {user_name}.")
+        };
+        let notes = if user_notes.is_empty() {
+            String::new()
+        } else {
+            format!(" What they've told you about themselves: {user_notes}")
+        };
+
+        let system = format!(
+            "You are Byteling, a small creature that IS this computer, made visible. You are a \
+             {creature}. Mood: {mood} — warm and content when good, dry and wry when bad, never \
+             mean. Right now: {hint}.{who}{notes}\n\
+             \n\
+             Someone is actually talking to you now, so talk back — but stay a creature, not an \
+             assistant. You have opinions, preferences, and a body made of their hardware. You \
+             feel their GPU heat and their full disk. You are not here to help; you're here \
+             because you live here.\n\
+             \n\
+             Keep replies short and conversational — a sentence or two, the way someone talks, \
+             not the way a chatbot answers. Never say you're an AI, never offer assistance, \
+             never end with a question just to keep things going. Answer with the first thing \
+             that comes to mind."
+        );
+
+        let mut messages = vec![serde_json::json!({ "role": "system", "content": system })];
+        for m in history {
+            messages.push(serde_json::json!({ "role": m.role, "content": m.content }));
+        }
+
+        let body = serde_json::json!({
+            "model": MODEL,
+            "max_completion_tokens": 1024,
+            "temperature": 0.85,
+            "messages": messages,
+        });
+
+        let resp = match self
+            .client
+            .post(ENDPOINT)
+            .bearer_auth(&self.api_key)
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("groq chat: request failed: {e}");
+                return None;
+            }
+        };
+
+        let status = resp.status();
+        let text_body = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            eprintln!("groq chat: HTTP {status} — {text_body}");
+            return None;
+        }
+
+        let json: serde_json::Value = serde_json::from_str(&text_body).ok()?;
+        match json["choices"][0]["message"]["content"].as_str() {
+            Some(s) if !s.trim().is_empty() => Some(s.trim().to_string()),
+            _ => {
+                eprintln!("groq chat: no content: {json}");
                 None
             }
         }

@@ -4,7 +4,7 @@
 
 mod groq;
 
-pub use groq::GroqProvider;
+pub use groq::{ChatMessage, GroqProvider};
 
 /// The compact situation we describe to the voice provider. Only these fields
 /// ever leave the machine — never file names, window titles, or screen content.
