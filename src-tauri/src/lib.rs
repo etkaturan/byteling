@@ -43,6 +43,7 @@ static LAST_CURSOR_KEY: AtomicU64 = AtomicU64::new(u64::MAX);
 /// Interactive regions, in window-relative logical px, published by the
 /// frontend. It knows the pet's real bounds and any open UI; Rust cannot.
 static HIT_RECTS: Mutex<Vec<(f64, f64, f64, f64)>> = Mutex::new(Vec::new());
+static WIDGET_HIT_RECTS: Mutex<Vec<(f64, f64, f64, f64)>> = Mutex::new(Vec::new());
 
 /// Frontend fetches the creature's identity once at startup.
 #[tauri::command]
@@ -85,6 +86,15 @@ fn get_pet_state(state: tauri::State<AppState>) -> Option<sim::PetState> {
 #[tauri::command]
 fn set_hit_rects(rects: Vec<(f64, f64, f64, f64)>) {
     if let Ok(mut guard) = HIT_RECTS.lock() {
+        *guard = rects;
+    }
+}
+
+/// The widget layer's interactive regions, kept separate from the pet's so
+/// each window's click-through is managed independently.
+#[tauri::command]
+fn set_widget_hit_rects(rects: Vec<(f64, f64, f64, f64)>) {
+    if let Ok(mut guard) = WIDGET_HIT_RECTS.lock() {
         *guard = rects;
     }
 }
@@ -489,6 +499,31 @@ fn loadout_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     Some(dir.join("loadout.json"))
 }
 
+
+fn widgets_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let dir = app.path().app_config_dir().ok()?;
+    let _ = fs::create_dir_all(&dir);
+    Some(dir.join("widgets.json"))
+}
+
+/// The user's placed widgets, as a flat JSON array. Empty until they add one.
+#[tauri::command]
+fn get_widgets(app: tauri::AppHandle) -> serde_json::Value {
+    widgets_path(&app)
+        .and_then(|p| fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| serde_json::json!([]))
+}
+
+#[tauri::command]
+fn set_widgets(app: tauri::AppHandle, widgets: serde_json::Value) -> Result<(), String> {
+    if let Some(path) = widgets_path(&app) {
+        let text = serde_json::to_string(&widgets).map_err(|e| e.to_string())?;
+        fs::write(path, text).map_err(|e| e.to_string())?;
+    }
+    let _ = app.emit("widgets-changed", widgets);
+    Ok(())
+}
 /// One equipped item id per slot ("headwear"/"accessory"/"handtool"/"back"),
 /// stored as a flat JSON object. Empty object if nothing is equipped yet.
 #[tauri::command]
@@ -781,6 +816,25 @@ pub fn run() {
                         interactive = hit;
                         let _ = window.set_ignore_cursor_events(!hit);
                     }
+
+                    // The widget layer manages its own click-through, using its
+                    // own rect list and its own window origin.
+                    if let Some(ww) = cursor_handle.get_webview_window("widgets") {
+                        if let Ok(wpos) = ww.outer_position() {
+                            let wscale = ww.scale_factor().unwrap_or(1.0);
+                            let wx = (cursor.x - wpos.x as f64) / wscale;
+                            let wy = (cursor.y - wpos.y as f64) / wscale;
+                            let whit = WIDGET_HIT_RECTS
+                                .lock()
+                                .map(|r| {
+                                    r.iter().any(|(x, y, w, h)| {
+                                        wx >= *x && wx <= x + w && wy >= *y && wy <= y + h
+                                    })
+                                })
+                                .unwrap_or(false);
+                            let _ = ww.set_ignore_cursor_events(!whit);
+                        }
+                    }
                 }
             });
 
@@ -831,6 +885,31 @@ pub fn run() {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
                         let _ = chat_window_clone.hide();
+                    }
+                });
+            }
+
+            // The widget layer fills the primary monitor and sits behind the
+            // pet but above the desktop. Click-through by default; individual
+            // widgets publish hit-rects to opt back in (same as the pet).
+            if let Some(widget_window) = app.get_webview_window("widgets") {
+                if let Ok(Some(monitor)) = widget_window.primary_monitor() {
+                    let size = monitor.size();
+                    let _ = widget_window.set_size(tauri::PhysicalSize::new(
+                        size.width,
+                        size.height,
+                    ));
+                    let _ = widget_window.set_position(tauri::PhysicalPosition::new(0, 0));
+                }
+                let _ = widget_window.set_ignore_cursor_events(true);
+                let _ = widget_window.show();
+
+                // Closing hides rather than destroys, like the other windows.
+                let widget_clone = widget_window.clone();
+                widget_window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = widget_clone.hide();
                     }
                 });
             }
@@ -896,7 +975,10 @@ pub fn run() {
             get_inbox,
             mark_inbox_seen,
             get_chat,
-            chat
+            chat,
+            get_widgets,
+            set_widgets,
+            set_widget_hit_rects
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

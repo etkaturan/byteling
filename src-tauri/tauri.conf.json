@@ -40,6 +40,20 @@
       "visible": false,
       "decorations": true,
       "url": "index.html"
+      },
+      {
+      "label": "widgets",
+      "title": "Byteling Widgets",
+      "width": 800,
+      "height": 600,
+      "transparent": true,
+      "decorations": false,
+      "alwaysOnTop": true,
+      "skipTaskbar": true,
+      "resizable": false,
+      "shadow": false,
+      "visible": false,
+      "url": "index.html"
       }
     ],
     "security": {
