@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capabilities for the pet overlay and the clinic window",
-  "windows": ["main", "clinic"],
+  "windows": ["main", "clinic", "chat", "widgets"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",

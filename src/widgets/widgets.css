@@ -1,0 +1,19 @@
+.widget-layer {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  background: transparent;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* The layer is click-through; individual widgets opt back in. */
+.widget-slot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.widget-hittable {
+  pointer-events: auto;
+}
