@@ -67,12 +67,44 @@ function WidgetLayer() {
   const seeded: WidgetPlacement[] =
     placements.length > 0
       ? placements
-      : [{ id: "placeholder", x: 0.5, y: 0.35, enabled: true, config: {} }];
+      : [{ id: "clock", x: 0.5, y: 0.3, enabled: true, config: { theme: "auto" } }];
   const enabled = seeded.filter((p) => p.enabled);
+
+  // Drag a widget to reposition it. Position is stored as a fraction of the
+  // screen so it survives resolution changes, and persisted on release.
+  const startDrag = (e: React.PointerEvent, idx: number) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const orig = enabled[idx];
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
+    const onMove = (ev: PointerEvent) => {
+      const nx = Math.min(1, Math.max(0, orig.x + (ev.clientX - startX) / w));
+      const ny = Math.min(1, Math.max(0, orig.y + (ev.clientY - startY) / h));
+      setPlacements((prev) => {
+        const base = prev.length ? prev : seeded;
+        return base.map((p, i) => (i === idx ? { ...p, x: nx, y: ny } : p));
+      });
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      // Persist whatever the final positions are.
+      setPlacements((prev) => {
+        const final = prev.length ? prev : seeded;
+        invoke("set_widgets", { widgets: final }).catch(() => {});
+        return final;
+      });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
 
   return (
     <div ref={rootRef} className="widget-layer">
-      {enabled.map((p) => {
+      {enabled.map((p, idx) => {
         const widget = getWidget(p.id);
         if (!widget) return null;
         // Fall back to the nearest supported mode.
@@ -83,9 +115,10 @@ function WidgetLayer() {
             : widget.sizeModes[0];
         return (
           <div
-            key={`${p.id}-${p.x}-${p.y}`}
+            key={`${p.id}-${idx}`}
             className="widget-slot"
             style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
+            onPointerDown={(e) => startDrag(e, idx)}
           >
             {widget.render({ mode: useMode, hue, now }, p.config)}
           </div>
