@@ -17,11 +17,17 @@ export type WidgetContext = {
 /** Per-widget saved settings — freeform, each widget defines its own shape. */
 export type WidgetConfig = Record<string, unknown>;
 
-/** A placed widget instance on the desktop. */
+export type WidgetPos = { x: number; y: number };
+
+/**
+ * A placed widget instance on the desktop. Full and compact keep SEPARATE
+ * positions — the big clock can live centre-screen while its minimal form
+ * parks in a corner, so switching modes doesn't drag one out of place.
+ */
 export type WidgetPlacement = {
   id: string; // which widget (matches registry)
-  x: number; // desktop position, fraction 0..1 of screen
-  y: number;
+  full: WidgetPos;
+  compact: WidgetPos;
   enabled: boolean;
   config: WidgetConfig;
 };
@@ -38,5 +44,7 @@ export type Widget = {
   render: (ctx: WidgetContext, config: WidgetConfig) => React.ReactNode;
   /** Default placement when first enabled. */
   defaultConfig: WidgetConfig;
-  defaultPos: { x: number; y: number };
+  defaultPos: WidgetPos;
+  /** Where the compact form sits by default — usually out of the way. */
+  defaultCompactPos: WidgetPos;
 };

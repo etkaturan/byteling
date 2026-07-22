@@ -7,6 +7,24 @@ import "./widgets.css";
 
 type ActivityPayload = { app: string; activity: string; fullscreen: boolean };
 
+/**
+ * Older saves stored one x/y for every mode. Lift those into the new
+ * per-mode shape rather than dropping the user's placement on the floor.
+ */
+function migratePlacement(raw: unknown): WidgetPlacement {
+  const p = raw as Record<string, unknown>;
+  if (p.full && p.compact) return p as unknown as WidgetPlacement;
+  const x = typeof p.x === "number" ? p.x : 0.5;
+  const y = typeof p.y === "number" ? p.y : 0.3;
+  return {
+    id: String(p.id ?? "clock"),
+    full: { x, y },
+    compact: { x: 0.93, y: 0.04 },
+    enabled: p.enabled !== false,
+    config: (p.config as Record<string, unknown>) ?? {},
+  };
+}
+
 function WidgetLayer() {
   const [placements, setPlacements] = useState<WidgetPlacement[]>([]);
   const [mode, setMode] = useState<WidgetSizeMode>("full");
@@ -16,13 +34,15 @@ function WidgetLayer() {
 
   // Load placements + hue, and keep them synced.
   useEffect(() => {
-    invoke<WidgetPlacement[]>("get_widgets").then(setPlacements).catch(() => {});
+    invoke<unknown[]>("get_widgets")
+      .then((raw) => setPlacements(raw.map(migratePlacement)))
+      .catch(() => {});
     invoke<{ hue: number }>("get_species")
       .then((s) => setHue(s.hue))
       .catch(() => {});
 
-    const unlistenWidgets = listen<WidgetPlacement[]>("widgets-changed", (e) =>
-      setPlacements(e.payload),
+    const unlistenWidgets = listen<unknown[]>("widgets-changed", (e) =>
+      setPlacements(e.payload.map(migratePlacement)),
     );
     // Desktop-focus drives the size mode: an app in front → compact; the bare
     // desktop → full. Same focus signal the pet already reacts to.
@@ -62,30 +82,47 @@ function WidgetLayer() {
     return () => window.clearInterval(t);
   }, [placements, mode]);
 
-  // TEMP: until the management panel exists, show the placeholder so we can
-  // verify the platform renders, hit-tests, and reacts to focus.
+  // TEMP: until the management panel exists, seed the clock so there's
+  // something to see. Migrates old single-position saves on the way in.
   const seeded: WidgetPlacement[] =
     placements.length > 0
       ? placements
-      : [{ id: "clock", x: 0.5, y: 0.3, enabled: true, config: { theme: "auto" } }];
+      : [
+          {
+            id: "clock",
+            full: { x: 0.5, y: 0.3 },
+            compact: { x: 0.93, y: 0.04 },
+            enabled: true,
+            config: { theme: "auto" },
+          },
+        ];
   const enabled = seeded.filter((p) => p.enabled);
 
   // Drag a widget to reposition it. Position is stored as a fraction of the
   // screen so it survives resolution changes, and persisted on release.
-  const startDrag = (e: React.PointerEvent, idx: number) => {
+  const startDrag = (
+    e: React.PointerEvent,
+    idx: number,
+    dragMode: WidgetSizeMode,
+  ) => {
     e.preventDefault();
     const startX = e.clientX;
     const startY = e.clientY;
     const orig = enabled[idx];
+    const origPos = dragMode === "compact" ? orig.compact : orig.full;
+    const key = dragMode === "compact" ? "compact" : "full";
     const w = window.innerWidth;
     const h = window.innerHeight;
 
     const onMove = (ev: PointerEvent) => {
-      const nx = Math.min(1, Math.max(0, orig.x + (ev.clientX - startX) / w));
-      const ny = Math.min(1, Math.max(0, orig.y + (ev.clientY - startY) / h));
+      const nx = Math.min(1, Math.max(0, origPos.x + (ev.clientX - startX) / w));
+      const ny = Math.min(1, Math.max(0, origPos.y + (ev.clientY - startY) / h));
       setPlacements((prev) => {
         const base = prev.length ? prev : seeded;
-        return base.map((p, i) => (i === idx ? { ...p, x: nx, y: ny } : p));
+        // Only the dragged mode's position changes; the other is untouched.
+        return base.map((p, i) =>
+          i === idx ? { ...p, [key]: { x: nx, y: ny } } : p,
+        );
       });
     };
     const onUp = () => {
@@ -113,12 +150,15 @@ function WidgetLayer() {
           : widget.sizeModes.includes("full")
             ? "full"
             : widget.sizeModes[0];
+        // Position comes from whichever mode is showing, so dragging in
+        // compact moves only the compact placement.
+        const pos = useMode === "compact" ? p.compact : p.full;
         return (
           <div
             key={`${p.id}-${idx}`}
             className="widget-slot"
-            style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
-            onPointerDown={(e) => startDrag(e, idx)}
+            style={{ left: `${pos.x * 100}%`, top: `${pos.y * 100}%` }}
+            onPointerDown={(e) => startDrag(e, idx, useMode)}
           >
             {widget.render({ mode: useMode, hue, now }, p.config)}
           </div>
