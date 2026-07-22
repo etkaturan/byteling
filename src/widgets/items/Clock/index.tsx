@@ -54,4 +54,6 @@ export const ClockWidget: Widget = {
   render,
   defaultConfig: { theme: "auto" },
   defaultPos: { x: 0.5, y: 0.3 },
+  // Top-right by default — visible but out of the way while you work.
+  defaultCompactPos: { x: 0.93, y: 0.04 },
 };
